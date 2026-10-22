@@ -4,6 +4,12 @@
 
 This is a derivative of the extension edition of [limyum-creator/codex-deepseek-patch](https://github.com/limyum-creator/codex-deepseek-patch). It merges compatible third-party models into the Codex desktop model picker while keeping official GPT models and their existing authentication. Each model slug remains unchanged and is explicitly routed to its provider in the generated catalog. Merely adding a model_providers entry to config.toml does not create a combined desktop menu.
 
+## Final result
+
+The Codex desktop model picker shows official GPT models alongside the Claude models added by this patch, with both available for selection. This screenshot is from the installed local build:
+
+![Codex model picker showing official GPT and third-party Claude models together](docs/images/model-picker-final.png)
+
 Requirements: Python 3.11+, Codex desktop, and a service with /v1/models and a compatible Responses API. Supply your own URL, model IDs, and accurate context limits. Set the API key in an operating-system environment variable; never commit it or put it in the connection JSON or config.toml.
 
 ```powershell
