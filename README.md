@@ -32,7 +32,7 @@ connect 会请求 /v1/models，并在本机状态目录保存连接信息。它�
 
 中科大大模型公共服务平台的五模型无密钥示例见 [USTC 连接示例](examples/ustc-connections.example.json)；该平台的发现、Responses 和工具调用验证记录见[安装和验证记录](docs/INSTALLATION.md#中科大平台五模型接入验证)。示例只保存 `USTC_API_KEY` 环境变量名。不同服务商的连接可合并在同一个私有 `connections.json` 的 `locals` 数组中。
 
-第三方条目不能照搬官方 GPT 的身份提示。旧构建复制官方目录模板时，也复制了“基于 GPT-6”的指令；这会让第三方模型错误自称 GPT。现已在生成第三方条目时替换该提示，同时保持官方条目原样。模型的自我介绍不能证明实际路由或底层权重；应以会话中的模型 ID、适配器路由和服务商记录核对。一次多模型切换会话中，GLM、DeepSeek、Qwen 的模型 ID 均正确，但两次 DeepSeek 请求收到上游 HTTP 400；短请求和带工具的独立请求成功，因此尚不能断定是模型不可用。新版适配器会显示上游校验错误详情，见[排查记录](docs/INSTALLATION.md#多模型会话的错误身份与-http-400)。
+第三方条目不能照搬官方 GPT 的身份提示。旧构建复制官方目录模板时，也复制了“基于 GPT-6”的指令；这会让第三方模型错误自称 GPT。现已在生成第三方条目时替换该提示，同时保持官方条目原样。模型的自我介绍不能证明实际路由或底层权重；应以会话中的模型 ID、适配器路由和服务商记录核对。一次多模型切换会话中，两次 DeepSeek 请求收到上游 HTTP 400。受控重放确认：跨模型传递 GLM 可见推理摘要时，适配器生成的助手消息漏写 `type: "message"`，被服务商拒绝解析；补上后完整历史请求返回 200。详情见[排查记录](docs/INSTALLATION.md#多模型会话的错误身份与-http-400)。
 
 ```powershell
 python patch.py build --connections "<path-to-connections.json>" --output "<path-to-build-directory>" --verify

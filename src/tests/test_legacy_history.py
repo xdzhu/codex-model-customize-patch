@@ -214,6 +214,7 @@ class CacheTests(unittest.TestCase):
                 'summary': [{'type': 'summary_text', 'text': 'Public summary already returned by the official model.'}]}
         converted = visible_reasoning(self.body(item))
         self.assertNotIn('encrypted_content', converted['input'][0])
+        self.assertEqual(converted['input'][0]['type'], 'message')
         self.assertEqual(converted['input'][0]['role'], 'assistant')
         self.assertEqual(converted['input'][0]['content'][0]['text'], item['summary'][0]['text'])
         self.assertIn('encrypted_content', item)

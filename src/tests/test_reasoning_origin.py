@@ -55,6 +55,7 @@ class OriginTests(unittest.TestCase):
         self.assertEqual(event['item'], expected)
         self.assertEqual(terminal['response']['output'][0], expected)
         converted, _, _ = resolve_request({'input': [expected]}, 'gpt-fixture')
+        self.assertEqual(converted['input'][0]['type'], 'message')
         self.assertEqual(converted['input'][0]['role'], 'assistant')
         self.assertEqual(converted['input'][0]['content'][0]['text'], 'Already visible summary.')
         self.assertNotIn('encrypted_content', converted['input'][0])
@@ -74,7 +75,7 @@ class OriginTests(unittest.TestCase):
                 same, _, _ = resolve_request({'input': [stamped]}, source)
                 self.assertEqual(same['input'][0], original)
                 crossed, _, _ = resolve_request({'input': [stamped]}, 'gpt-fixture')
-                self.assertEqual(crossed['input'], [{'role': 'assistant', 'content': [
+                self.assertEqual(crossed['input'], [{'type': 'message', 'role': 'assistant', 'content': [
                     {'type': 'output_text', 'text': 'visible exact text'}]}])
 
     def test_indexed_legacy_state_restores_only_its_source_and_official_state_stays_unchanged(self):
@@ -83,7 +84,8 @@ class OriginTests(unittest.TestCase):
         self.assertEqual(visible_reasoning(same, protected_reasoning=protected)['input'], [REASONING])
         public = {**REASONING, 'content': [{'type': 'reasoning_text', 'text': 'Public facts.'}]}
         crossed, _, _ = resolve_request({'input': [public]}, 'gpt-fixture', legacy_origins=origins)
-        self.assertEqual(crossed['input'], [{'role': 'assistant', 'content': [{'type': 'output_text', 'text': 'Public facts.'}]}])
+        self.assertEqual(crossed['input'], [{'type': 'message', 'role': 'assistant',
+            'content': [{'type': 'output_text', 'text': 'Public facts.'}]}])
         official = {**REASONING, 'encrypted_content': 'official-original-cipher'}
         untouched, _, changed = resolve_request({'input': [official]}, 'gpt-fixture', legacy_origins=origins)
         self.assertFalse(changed)
@@ -227,7 +229,8 @@ class RuntimeTests(unittest.TestCase):
         index_legacy_origins([source], ['gemini-fixture'], self.profile['legacy_origins_file'], source.parent.parent)
         self.http({'model': 'gpt-fixture', 'input': [public, CALL, RESULT]})
         self.assertEqual(self.upstream.records[-1][0]['input'], [
-            {'role': 'assistant', 'content': [{'type': 'output_text', 'text': 'Public task facts.'}]}, CALL, RESULT])
+            {'type': 'message', 'role': 'assistant',
+             'content': [{'type': 'output_text', 'text': 'Public task facts.'}]}, CALL, RESULT])
 
 
 class IndexTests(unittest.TestCase):

@@ -65,7 +65,8 @@ def public_reasoning_message(item):
     texts = _texts(item.get('summary')) + _texts(item.get('content'))
     if not texts:
         return None
-    return {'role': 'assistant', 'content': [{'type': 'output_text', 'text': text} for text in texts]}
+    return {'type': 'message', 'role': 'assistant',
+            'content': [{'type': 'output_text', 'text': text} for text in texts]}
 
 
 def reasoning_key(item):
