@@ -37,4 +37,6 @@ There is no configured automatic update feed for this fork; do not enable the ba
 
 The updated example lists Opus 5.5, Sonnet 5.5, and Sonnet 4.6 in menu order. A minimal Responses request to Sonnet 5.5 returned `42`, and an incremental catalog build passed isolated verification. A later build with long-history recovery fixes was installed locally. For the tested Opus 5.5 route, short requests established an accepted `max_output_tokens` ceiling of 128000; see the [output budget findings](docs/OUTPUT_BUDGET.md) for evidence and limits. The example context limits are placeholders; use values verified with your provider.
 
+Switching an old GPT chat to Opus may trigger costly history recovery before the final request, which can still be rejected with HTTP 400. A fresh chat with a concise readable handoff passed a small request; see the [troubleshooting record](docs/INSTALLATION.md#重启后旧会话长时间正在思考最终收到服务商-http-400).
+
 Source base: upstream extension commit d2c4a8b8b614813846b8563c1c2e98a8bbbc829d. Original [MIT license](LICENSE) and [NOTICE](NOTICE) are retained. The added work covers environment-key authentication, Windows user environment variables, a compatible User-Agent, and an installer edge-case fix. This project is not affiliated with OpenAI, Anthropic, or API providers.
