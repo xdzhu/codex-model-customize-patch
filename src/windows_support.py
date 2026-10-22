@@ -209,8 +209,17 @@ def _require(ok, message):
 
 
 def _powershell(script):
+    # A bundled Python can inherit PS7 module paths. Windows PowerShell 5.1
+    # then tries to import incompatible modules before its built-in cmdlets.
+    environment = os.environ.copy()
+    program_files = environment.get("ProgramFiles", r"C:\Program Files")
+    windows = environment.get("SystemRoot", r"C:\Windows")
+    environment["PSModulePath"] = os.pathsep.join((
+        str(Path(program_files) / "WindowsPowerShell/Modules"),
+        str(Path(windows) / "System32/WindowsPowerShell/v1.0/Modules")))
     result = subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script],
-                            check=True, capture_output=True, text=True, encoding="utf-8", **background_options())
+                            check=True, capture_output=True, text=True, encoding="utf-8",
+                            env=environment, **background_options())
     return result.stdout.strip()
 
 

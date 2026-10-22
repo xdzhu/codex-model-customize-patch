@@ -570,8 +570,18 @@ def status(args):
     directory, manifest = load_build(args.directory)
     if manifest.get('architecture') == ARCHITECTURE:
         from official_client_update import verify_official
-        verify_official(Path(manifest['target']))
-        print(json.dumps({key:manifest.get(key) for key in ('tool_version','architecture','edition','app_version','status','native_probe','target')}, indent=2))
+        target = Path(manifest['target'])
+        if sys.platform == 'win32':
+            from windows_support import discover_app, is_store_app
+            if is_store_app(target):
+                target = discover_app()
+        verify_official(target)
+        current = app_layout(target)
+        result = {key:manifest.get(key) for key in ('tool_version','architecture','edition','app_version','status','native_probe','target')}
+        result['current_app_version'] = current['version']
+        result['current_app_build'] = current['build']
+        result['current_target'] = str(target)
+        print(json.dumps(result, indent=2))
         return
     print(json.dumps({key: manifest.get(key) for key in ("tool_version", "app_version", "status", "boot_probe", "target")}, indent=2))
     if sys.platform in ("darwin", "win32"):

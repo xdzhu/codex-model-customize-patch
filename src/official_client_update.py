@@ -164,6 +164,7 @@ class NativeMonitorBackend:
         record = read_manifest(self.baseline)
         if record.get("architecture") != ARCHITECTURE or record.get("status") != "installed":
             return None
+        self.refresh_source()
         if not self.app.exists():
             return None
         current = self.snapshot()

@@ -33,7 +33,9 @@ python patch.py install "<path-to-build-directory>"
 
 Reopen Codex and use the model picker. Official models remain available. To undo, close Codex and run python patch.py restore "<path-to-build-directory>".
 
-There is no configured automatic update feed for this fork; do not enable the background update monitor. Rebuild and verify after Codex updates. This adapter handles model traffic, so inspect the source before use. Local build output and connection files can contain sensitive operational data and must stay out of Git.
+On Windows, the installer registers a logon scheduled task to start the local adapter after a reboot and sign-in. Keep the API key in a persistent user environment variable; no terminal or manual script is needed on each startup. The official GPT login and models remain available.
+
+The installed adapter does not require an exact Codex desktop version. After an app update, check the model menu, `patch.py status`, and a short request. Rebuild and run isolated verification against the current signed app when the request contract changes, the catalog needs refreshing, or a new build is to be installed. This fork has no configured automatic update feed; do not enable the background update monitor. Quit Codex normally before installing a new build. This adapter handles model traffic, so inspect the source before use. Local build output and connection files can contain sensitive operational data and must stay out of Git.
 
 The updated example lists Opus 5.5, Sonnet 5.5, and Sonnet 4.6 in menu order. A minimal Responses request to Sonnet 5.5 returned `42`, and an incremental catalog build passed isolated verification. A later build with long-history recovery fixes was installed locally. For the tested Opus 5.5 route, short requests established an accepted `max_output_tokens` ceiling of 128000; see the [output budget findings](docs/OUTPUT_BUDGET.md) for evidence and limits. The example context limits are placeholders; use values verified with your provider.
 

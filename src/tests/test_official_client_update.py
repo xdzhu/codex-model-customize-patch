@@ -125,6 +125,20 @@ class NativeBaselineTests(unittest.TestCase):
         discover.assert_called_once();verify.assert_called_once_with(Path('/new-store'))
         snapshot.assert_called_once_with(Path('/new-store'))
 
+    def test_store_adoption_discovers_new_package_before_old_path_check(self):
+        with tempfile.TemporaryDirectory() as temp:
+            directory, home, app, record, settings = self.fixture(Path(temp))
+            old = Path('/WindowsApps/old/app')
+            backend = native.NativeMonitorBackend(settings)
+            backend.app = old
+            backend.store = True
+            with mock('windows_support.discover_app', return_value=app), \
+                 mock.object(backend, 'snapshot', return_value={'fingerprint': 'updated-vendor'}), \
+                 mock.object(p, 'app_layout', return_value={'asar': app/'app.asar'}), \
+                 mock.object(p, 'file_sha', return_value='new-vendor-asar'):
+                self.assertIsNone(backend.adopt())
+            self.assertEqual(backend.app, app)
+
     def test_legacy_baseline_stays_on_legacy_stop_and_restore_path(self):
         with tempfile.TemporaryDirectory() as temp:
             directory=Path(temp);p.save_json(directory/'manifest.json',{'patched_asar':'legacy'})

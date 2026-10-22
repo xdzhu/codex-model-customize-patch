@@ -1,4 +1,6 @@
 import copy
+import contextlib
+import io
 import json
 import os
 from pathlib import Path
@@ -7,9 +9,30 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch as mock
 
 import patch
+
+
+class NativeStatusTests(unittest.TestCase):
+    def test_status_uses_current_signed_store_package_after_update(self):
+        with tempfile.TemporaryDirectory() as temp:
+            directory = Path(temp)
+            patch.save_json(directory/'manifest.json', {'format': 1,
+                'architecture': patch.ARCHITECTURE, 'target': 'C:/Program Files/WindowsApps/old/app',
+                'app_version': 'old', 'status': 'installed'})
+            output = io.StringIO()
+            with mock.object(patch.sys, 'platform', 'win32'), \
+                 mock('windows_support.discover_app', return_value=Path('C:/Program Files/WindowsApps/new/app')), \
+                 mock('official_client_update.verify_official') as verify, \
+                 mock.object(patch, 'app_layout', return_value={'version': 'new', 'build': '42'}), \
+                 contextlib.redirect_stdout(output):
+                patch.status(SimpleNamespace(directory=directory))
+            result = json.loads(output.getvalue())
+            self.assertEqual(result['app_version'], 'old')
+            self.assertEqual(result['current_app_version'], 'new')
+            verify.assert_called_once_with(Path('C:/Program Files/WindowsApps/new/app'))
 
 
 def write_asar(path, entries, data):

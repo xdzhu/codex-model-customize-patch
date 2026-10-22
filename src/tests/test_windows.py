@@ -14,6 +14,15 @@ import windows_support as win
 
 
 class BackgroundProcessTests(unittest.TestCase):
+    def test_powershell_does_not_inherit_powershell_7_module_path(self):
+        with mock.patch.dict(os.environ, {'PSModulePath': 'C:/Program Files/PowerShell/7/Modules'}), \
+             mock.patch.object(win.subprocess, 'run') as run:
+            run.return_value.stdout = 'ok\n'
+            self.assertEqual(win._powershell('Get-AppxPackage'), 'ok')
+        self.assertIn('WindowsPowerShell', run.call_args.kwargs['env']['PSModulePath'])
+        self.assertNotIn('PowerShell/7', run.call_args.kwargs['env']['PSModulePath'])
+        self.assertEqual(run.call_args.kwargs['env'].get('PATH'), os.environ.get('PATH'))
+
     def test_all_preflight_test_children_explicitly_disable_windows_consoles(self):
         # A pythonw parent does not suppress a console allocated by its child.
         # Public updates execute these tests, so their real subprocess calls
