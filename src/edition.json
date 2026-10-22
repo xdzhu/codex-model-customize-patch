@@ -1,0 +1,6 @@
+{
+  "architecture": "official-client-v1",
+  "branch": "main",
+  "edition": "proxy",
+  "version": "0.7.5-proxy.1+custom.1"
+}

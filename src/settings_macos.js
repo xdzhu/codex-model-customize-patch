@@ -1,0 +1,283 @@
+/* Native floating whale, upper water-drop spray and anchored settings cards. */
+ObjC.import('AppKit');ObjC.import('Foundation');
+function run(argv){
+ const directory=argv[0],python=argv[1],controller=argv[2],testing=argv.indexOf('--self-test')>=0,loopTest=testing&&argv.indexOf('--loop-test')>=0;
+ for(const p of [directory,python,controller])if(!p||p[0]!=='/'||/[\x00\r\n]/.test(p))throw Error('Absolute paths required');
+ const ui=directory+'/settings-ui',jobs=ui+'/jobs',app=$.NSApplication.sharedApplication;
+ app.setActivationPolicy($.NSApplicationActivationPolicyAccessory);
+ function read(p){try{const s=$.NSString.stringWithContentsOfFileEncodingError($(p),$.NSUTF8StringEncoding,null);return s?JSON.parse(ObjC.unwrap(s)):null;}catch(_){return null;}}
+ function write(p,v){$(JSON.stringify(v)).writeToFileAtomicallyEncodingError($(p),true,$.NSUTF8StringEncoding,null);$.NSFileManager.defaultManager.setAttributesOfItemAtPathError($({NSFilePosixPermissions:384}),$(p),null);}
+ function remove(p){$.NSFileManager.defaultManager.removeItemAtPathError($(p),null);}
+ const profiling=testing&&ObjC.unwrap($.NSProcessInfo.processInfo.environment.objectForKey('CODEX_WHALE_PROFILE'))==='1';let profile={frames:[],draws:0,render:[]};
+ const recoverHidden=ObjC.unwrap($.NSProcessInfo.processInfo.environment.objectForKey('CODEX_SETTINGS_RECOVERY'))==='1'&&(read(ui+'/renderer.json')||{}).visible===false;
+ const initial=read(ui+'/view.json'),shell=initial.hub,L=shell.layout;let current=initial.view,pending=null,closing=false,hidden=false,expanded=false,animation=null,lastRaise='',lastPoll=0,lastPreference=0,lastHeartbeat=0,drawFailure='',hover=-1,dragged=false,dragStart=null,mouseStart=null;
+ const actions={},buttonData={},surfaces={},fields={};let animationTopClearance=Infinity;let updateWidgets=null,updateState={},updateAttention=false;let cancelButton=null;let fastTimer=null;let number=1,card=null,cardBody=null,scroll=null,notice=null,search=null,rowViews=[],cardButtons=[];
+ let dockTimer=null,dockHintEdge=null,lastSound=0;const sounds={};
+ let dock=null,dockAnimation=null,dockLeave=0,cardMotion=null,cardProgress=1,cardSource=null,cardGroups=[],cardAfterClose=null,cardClip=null,cardSurface=null;
+ let tipBody=null,cardDocument=null,retiredPages=[],textMotion=null;let parkedCard=null,renderedSignature='',deferredView=null,cardImage=null,snapshotDirty=true;
+ let motionChecks={opened:0,closed:0,hover_revealed:false,leave_retracted:false,detached:false,form_held:false};
+ const buttonImages=new Map();
+ for(const name of ['open','close']){try{const sound=$.NSSound.alloc.initWithContentsOfFileByReference($(ui+'/bubble-'+name+'.wav'),false);if(Number(sound.duration)>0)sounds[name]=sound;}catch(_){}}
+ function playBubble(name){if(testing||hidden||current.options.sound===false||Date.now()-lastSound<shell.sound.cooldown_ms)return;lastSound=Date.now();try{Object.keys(sounds).forEach(k=>sounds[k].stop);if(sounds[name])sounds[name].play;}catch(_){}}
+
+ const brand=$.NSImage.alloc.initWithContentsOfFile($(ui+'/brand.png'));
+ const colorCache={},fontCache={};
+ function color(hex,alpha){const key=hex+':'+(alpha===undefined?1:alpha);if(colorCache[key])return colorCache[key];const h=hex.replace('#',''),value=$.NSColor.colorWithSRGBRedGreenBlueAlpha(parseInt(h.slice(0,2),16)/255,parseInt(h.slice(2,4),16)/255,parseInt(h.slice(4,6),16)/255,alpha===undefined?1:alpha);if(Object.keys(colorCache).length>128)Object.keys(colorCache).forEach(k=>delete colorCache[k]);colorCache[key]=value;return value;}
+ function dark(){if(current.options.theme!=='system')return current.options.theme==='dark';const style=$.NSUserDefaults.standardUserDefaults.stringForKey('AppleInterfaceStyle');return style&&ObjC.unwrap(style)==='Dark';}
+ let palette=shell.palettes[dark()?'dark':'light'];
+ function reduced(){return current.options.motion==='reduced'||Boolean($.NSWorkspace.sharedWorkspace.accessibilityDisplayShouldReduceMotion);}
+ function frame(v,x,y,w,h){v.setFrame($.NSMakeRect(x,y,w,h));}
+ function font(size,bold){const key=size+':'+!!bold;if(!fontCache[key])fontCache[key]=bold?$.NSFont.boldSystemFontOfSize(size):$.NSFont.systemFontOfSize(size);return fontCache[key];}
+ function text(parent,x,y,w,h,value,size,bold){const v=$.NSTextField.alloc.initWithFrame($.NSMakeRect(x,y,w,h));v.stringValue=String(value||'');v.editable=false;v.selectable=false;v.bezeled=false;v.drawsBackground=false;v.font=font(size||12,bold);v.textColor=color(palette.text);v.lineBreakMode=$.NSLineBreakByTruncatingTail;parent.addSubview(v);return v;}
+ function rounded(v,r,bg,border){const id='surface-'+number++;v.identifier=id;surfaces[id]={view:v,radius:r,background:bg,border:border};v.needsDisplay=true;}
+ function drawSurface(v){if(profiling)profile.draws++;const id=v.identifier?ObjC.unwrap(v.identifier):'',data=surfaces[id];if(!data)return;const p=data.card&&cardSource?morphPath(cardProgress):$.NSBezierPath.bezierPathWithRoundedRectXRadiusYRadius(v.bounds,data.radius,data.radius);color(data.background,data.background===palette.surface?.95:1).setFill;p.fill;if(data.border){color(data.border).setStroke;p.lineWidth=1;p.stroke;}if(data.card&&card&&cardSource&&cardImage&&(cardMotion||cardProgress<1))drawCardImage(p);}
+ function morphPath(progress){
+  const path=$.NSBezierPath.bezierPath,s=cardSource,q=progress*progress*(3-2*progress),x=(s.x-s.size/2)*(1-q)+q,y=(s.y-s.size/2)*(1-q)+q,w=s.size+(L.card_width-2-s.size)*q,h=s.size+(L.card_height-2-s.size)*q;
+  const r=Math.min(Math.min(w,h)/2,Math.min(w,h)/2*Math.pow(1-q,1.1)+L.morph.radius*q),k=.55228475,amp=Math.sin(progress*Math.PI)**2*Math.min(w,h)*L.morph.wave;
+  const pt=(a,b)=>$.NSMakePoint(a,b),curve=(a,b,c,d,e,f)=>path.curveToPointControlPoint1ControlPoint2(pt(e,f),pt(a,b),pt(c,d));
+  // Each edge has two broad cubic waves with horizontal/vertical end tangents.
+  // Corners remain circular and soften continuously as the water stretches.
+  const edge=(ax,ay,bx,by,nx,ny,i)=>{const dx=bx-ax,dy=by-ay,water=amp*(.75+.25*Math.sin(progress*6-i*1.4)),mx=(ax+bx)/2+nx*water,my=(ay+by)/2+ny*water;curve(ax+dx*.25,ay+dy*.25,mx-dx*.25,my-dy*.25,mx,my);curve(mx+dx*.25,my+dy*.25,bx-dx*.25,by-dy*.25,bx,by);};
+  path.moveToPoint(pt(x+r,y));edge(x+r,y,x+w-r,y,0,1,0);curve(x+w-r+k*r,y,x+w,y+r-k*r,x+w,y+r);
+  edge(x+w,y+r,x+w,y+h-r,-1,0,1);curve(x+w,y+h-r+k*r,x+w-r+k*r,y+h,x+w-r,y+h);
+  edge(x+w-r,y+h,x+r,y+h,0,-1,2);curve(x+r-k*r,y+h,x,y+h-r+k*r,x,y+h-r);
+  edge(x,y+h-r,x,y+r,1,0,3);curve(x,y+r-k*r,x+r-k*r,y,x+r,y);path.closePath;return path;
+ }
+
+ function path(data,rect,angle){const p=$.NSBezierPath.bezierPath,tokens=data.match(/[MLCHVZ]|[-+]?(?:\d*\.?\d+)/g)||[];let i=0,cmd='',last=[0,0];const xy=(x,y)=>{const a=(angle||0)*Math.PI/180,dx=x-12,dy=y-12;const rx=12+dx*Math.cos(a)-dy*Math.sin(a),ry=12+dx*Math.sin(a)+dy*Math.cos(a);return $.NSMakePoint(rect.x+rx*rect.w/24,rect.y+ry*rect.h/24);};while(i<tokens.length){if(/^[MLCHVZ]$/.test(tokens[i]))cmd=tokens[i++];if(cmd==='Z'){p.closePath;cmd='';continue;}if(cmd==='M'||cmd==='L'){last=[+tokens[i++],+tokens[i++]];const a=xy(last[0],last[1]);if(cmd==='M'){p.moveToPoint(a);cmd='L';}else p.lineToPoint(a);}else if(cmd==='H'||cmd==='V'){last[cmd==='H'?0:1]=+tokens[i++];p.lineToPoint(xy(last[0],last[1]));}else if(cmd==='C'){const a=xy(+tokens[i++],+tokens[i++]),b=xy(+tokens[i++],+tokens[i++]);last=[+tokens[i++],+tokens[i++]];p.curveToPointControlPoint1ControlPoint2(xy(last[0],last[1]),a,b);}else break;}return p;}
+
+ function drawButton(v){if(profiling)profile.draws++;
+  const d=buttonData[Number(v.tag)];if(!d)return;const b=v.bounds,w=Number(b.size.width),h=Number(b.size.height),isHover=hover===Number(v.tag);
+  if(d.drop&&!d.rasterizing){const key=[d.icon,d.drop.path,d.drop.angle,d.baseWidth,d.baseHeight,palette.surface,palette.accent,isHover,d.update&&updateAttention,d.badge,d.preview].join('|');let image=buttonImages.get(key);
+   if(!image){const width=d.baseWidth,height=d.baseHeight,temp=d.rasterView||(d.rasterView=$.WhaleButton.alloc.initWithFrame($.NSMakeRect(0,0,width,height)));temp.tag=v.tag;d.rasterizing=true;let rep;try{rep=temp.bitmapImageRepForCachingDisplayInRect(temp.bounds);temp.cacheDisplayInRectToBitmapImageRep(temp.bounds,rep);if(testing)motionChecks.icon_scale=Number(rep.pixelsWide)/width;}finally{d.rasterizing=false;}image=$.NSImage.alloc.initWithSize($.NSMakeSize(width,height));image.addRepresentation(rep);buttonImages.set(key,image);if(buttonImages.size>48)buttonImages.delete(buttonImages.keys().next().value);}
+
+   image.drawInRectFromRectOperationFractionRespectFlippedHints($.NSMakeRect(0,0,w,h),$.NSZeroRect,$.NSCompositingOperationSourceOver,1,true,$.NSDictionary.dictionary);return;
+  }
+  paintButton(d,w,h,isHover);
+ }
+ function paintButton(d,w,h,isHover){
+  if(d.whale&&brand){brand.drawInRectFromRectOperationFractionRespectFlippedHints($.NSMakeRect(0,0,w,h),$.NSZeroRect,$.NSCompositingOperationSourceOver,isHover?.88:1,true,$.NSDictionary.dictionary);return;}
+  if(d.toggle){const on=Boolean(d.checked),rail=$.NSBezierPath.bezierPathWithRoundedRectXRadiusYRadius($.NSMakeRect(w-37,7,34,20),10,10);color(on?palette.accent:palette.line).setFill;rail.fill;const dot=$.NSBezierPath.bezierPathWithOvalInRect($.NSMakeRect(on?w-20:w-34,10,14,14));color('#FFFFFF').setFill;dot.fill;const a=$.NSMutableDictionary.dictionary;a.setObjectForKey(font(12,false),$.NSFontAttributeName);a.setObjectForKey(color(palette.text),$.NSForegroundColorAttributeName);$(d.label).drawInRectWithAttributes($.NSMakeRect(3,8,w-49,20),a);return;}
+  const shape=d.drop?path(d.drop.path,{x:4,y:4,w:w-8,h:h-8},d.drop.angle):$.NSBezierPath.bezierPathWithRoundedRectXRadiusYRadius($.NSMakeRect(1,2,w-2,h-4),8,8);
+  $.NSGraphicsContext.saveGraphicsState;
+  if(d.drop){const shadow=$.NSShadow.alloc.init;shadow.shadowColor=color('#25436A',.10);shadow.shadowBlurRadius=4;shadow.shadowOffset=$.NSMakeSize(0,-1);shadow.set;}
+  color(d.preview?palette.hover:d.update&&updateAttention?palette.alert:d.style==='primary'?palette.accent:isHover?palette.hover:palette.surface).setFill;shape.fill;$.NSGraphicsContext.restoreGraphicsState;
+  color(d.preview?palette.accent:d.update&&updateAttention?palette.alert_line:isHover?palette.accent:palette.line).setStroke;shape.lineWidth=isHover?.9:.7;shape.stroke;
+  if(d.icon){const icon=path(d.icon,{x:(w-14)/2+(d.badge?L.badge.icon_x:0),y:(h-14)/2-1+(d.badge?L.badge.icon_y:0),w:14,h:14},d.edge?d.drop.angle:0);color(d.update&&updateAttention?palette.alert_ink:isHover?palette.accent:palette.text).setStroke;icon.lineWidth=1.3;icon.lineCapStyle=$.NSRoundLineCapStyle;icon.lineJoinStyle=$.NSRoundLineJoinStyle;icon.stroke;}
+  else{const attrs=$.NSMutableDictionary.dictionary;attrs.setObjectForKey(font(11,true),$.NSFontAttributeName);attrs.setObjectForKey(color(d.style==='primary'?'#FFFFFF':d.style==='danger'?palette.danger:palette.text),$.NSForegroundColorAttributeName);const title=$(d.label||''),size=title.sizeWithAttributes(attrs);title.drawAtPointWithAttributes($.NSMakePoint((w-Number(size.width))/2,(h-Number(size.height))/2),attrs);}
+ }
+
+ ObjC.registerSubclass({name:'WhaleSurface',superclass:'NSView',methods:{'drawRect:':{implementation:function(){try{drawSurface(this);}catch(e){drawFailure=String(e);console.log('Surface: '+String(e));}}}}});
+ ObjC.registerSubclass({name:'WhaleFlippedView',superclass:'WhaleSurface',methods:{isFlipped:{implementation:()=>true}}});
+ ObjC.registerSubclass({name:'WhaleButton',superclass:'NSButton',methods:{
+  'drawRect:':{implementation:function(){try{drawButton(this);}catch(e){drawFailure=String(e);console.log('Button: '+String(e));}}},
+  'mouseEntered:':{implementation:function(){hover=Number(this.tag);this.needsDisplay=true;const d=buttonData[hover];if(d&&d.hint)showTip(this,d.label,d.hint);if(d&&d.drop&&!d.edge&&!animation){d.hoverFrame=this.frame;$.NSAnimationContext.beginGrouping;$.NSAnimationContext.currentContext.duration=reduced()?0:shell.motion.hover_ms/1000;const f=this.frame;this.animator.setFrame($.NSMakeRect(Number(f.origin.x)-1.5,Number(f.origin.y)-1.5,Number(f.size.width)+3,Number(f.size.height)+3));$.NSAnimationContext.endGrouping;}}},
+  'mouseExited:':{implementation:function(){if(hover===Number(this.tag))hover=-1;this.needsDisplay=true;tip.orderOut(null);const d=buttonData[Number(this.tag)];if(d&&d.hoverFrame){$.NSAnimationContext.beginGrouping;$.NSAnimationContext.currentContext.duration=reduced()?0:shell.motion.hover_ms/1000;this.animator.setFrame(d.hoverFrame);$.NSAnimationContext.endGrouping;delete d.hoverFrame;}}},
+  'mouseDown:':{implementation:function(){const d=buttonData[Number(this.tag)];if(d.whale||d.edge){dragged=false;mouseStart=$.NSEvent.mouseLocation;dragStart=collapsedOrigin();}}},
+  'mouseDragged:':{implementation:function(){const d=buttonData[Number(this.tag)];if((!d.whale&&!d.edge)||!mouseStart)return;const now=$.NSEvent.mouseLocation,dx=Number(now.x)-Number(mouseStart.x),dy=Number(now.y)-Number(mouseStart.y);if(Math.abs(dx)+Math.abs(dy)>5){if(!dragged){detachDock();dragStart=collapsedOrigin();}dragged=true;hideOrbit();hub.setFrameOrigin(clampPoint(Number(dragStart.x)+dx-L.closed_whale_x,Number(dragStart.y)+dy,L.closed_width,L.bubble));updateDockHint();}}},
+  'mouseUp:':{implementation:function(){const id=Number(this.tag);if((buttonData[id].whale||buttonData[id].edge)&&dragged){mouseStart=null;finishDrag();return;}mouseStart=null;const fn=actions[id];if(fn)fn();}},
+  'rightMouseDown:':{implementation:function(){openPreferences();}}
+ }});
+ ObjC.registerSubclass({name:'WhaleController',superclass:'NSObject',protocols:['NSWindowDelegate','NSTextFieldDelegate'],methods:{
+  'clicked:':{types:['void',['id']],implementation:function(sender){const fn=actions[Number(sender.tag)];if(fn)fn();}},
+  'tick:':{types:['void',['id']],implementation:function(){tick();}},
+  'hoverTick:':{types:['void',['id']],implementation:function(){pollDock();}},
+  'animate:':{types:['void',['id']],implementation:function(){animate();}},
+  'scrollChanged:':{types:['void',['id']],implementation:function(){visibleRows();}},
+  'controlTextDidChange:':{types:['void',['id']],implementation:function(){filter();}},
+  'controlTextDidBeginEditing:':{types:['void',['id']],implementation:function(n){focusInput(n.object,true);}},
+  'controlTextDidEndEditing:':{types:['void',['id']],implementation:function(n){focusInput(n.object,false);}},
+  'windowWillClose:':{types:['void',['id']],implementation:function(){if(!closing)hide();}}
+ }});
+ ObjC.registerSubclass({name:'WhalePanel',superclass:'NSPanel',methods:{canBecomeKeyWindow:{implementation:()=>true},canBecomeMainWindow:{implementation:()=>true}}});
+ const receiver=$.WhaleController.alloc.init;
+ function makePanel(w,h){const p=$.WhalePanel.alloc.initWithContentRectStyleMaskBackingDefer($.NSMakeRect(0,0,w,h),$.NSWindowStyleMaskBorderless,$.NSBackingStoreBuffered,false);p.opaque=false;p.backgroundColor=$.NSColor.clearColor;p.level=$.NSFloatingWindowLevel;p.hasShadow=false;p.releasedWhenClosed=false;p.hidesOnDeactivate=false;p.collectionBehavior=$.NSWindowCollectionBehaviorCanJoinAllSpaces|$.NSWindowCollectionBehaviorFullScreenAuxiliary;return p;}
+ const hub=makePanel(L.closed_width,L.bubble),tip=makePanel(224,64),dockHint=makePanel(L.dock.size,L.dock.size);dockHint.ignoresMouseEvents=true;hub.title='鲸鱼 · Codex 模型补丁';hub.delegate=receiver;tip.ignoresMouseEvents=true;
+ function boundsAt(x,y){const screens=$.NSScreen.screens;let nearest=$.NSScreen.mainScreen.visibleFrame,score=Infinity;for(let i=0;i<Number(screens.count);i++){const f=screens.objectAtIndex(i).visibleFrame,dx=Math.max(Number(f.origin.x)-x,0,x-Number(f.origin.x)-Number(f.size.width)),dy=Math.max(Number(f.origin.y)-y,0,y-Number(f.origin.y)-Number(f.size.height)),d=dx*dx+dy*dy;if(d<score){score=d;nearest=f;}}return nearest;}
+ function clampPoint(x,y,w,h,bounds){const b=bounds||boundsAt(x+w/2,y+h/2);return $.NSMakePoint(Math.max(Number(b.origin.x)+5,Math.min(x,Number(b.origin.x)+Number(b.size.width)-w-5)),Math.max(Number(b.origin.y)+5,Math.min(y,Number(b.origin.y)+Number(b.size.height)-h-5)));}
+ const whaleBottom=L.height-L.whale_y-L.bubble;
+ function collapsedOrigin(){const f=hub.frame.origin;return $.NSMakePoint(Number(f.x)+(expanded?L.whale_x:L.closed_whale_x),Number(f.y)+(expanded?whaleBottom:0));}
+ ObjC.registerSubclass({name:'WhaleCanvas',superclass:'NSView',methods:{'drawRect:':{implementation:function(){$.NSRectFillUsingOperation(this.bounds,$.NSCompositingOperationClear);}}}});
+ ObjC.registerSubclass({name:'WhaleSpray',superclass:'WhaleFlippedView',methods:{'drawRect:':{implementation:function(){
+  $.NSRectFillUsingOperation(this.bounds,$.NSCompositingOperationClear);
+  if(!animation||animation.direction!=='open'||reduced())return;
+  try{
+   const t=Math.min(1,(Date.now()-animation.start)/animation.duration),pulse=Math.sin(Math.PI*Math.min(1,t/.64)),scale=.35+.65*Math.min(1,t/.32);
+   if(pulse>0.001){
+    $.NSGraphicsContext.saveGraphicsState;
+    const shadow=$.NSShadow.alloc.init;shadow.shadowColor=color(palette.accent,.06*pulse);shadow.shadowBlurRadius=3;shadow.shadowOffset=$.NSMakeSize(0,0);shadow.set;
+    const gradient=$.NSGradient.alloc.initWithStartingColorEndingColor(color('#B5D5FF',.32*pulse),color(palette.accent,.19*pulse));
+    L.water.forEach(data=>{const water=path(data,{x:L.spout_x-30*scale,y:L.spout_y-42*scale,w:24*scale,h:24*scale});gradient.drawInBezierPathAngle(water,90);});
+    $.NSGraphicsContext.restoreGraphicsState;
+   }
+   L.particles.forEach((d,i)=>{const u=Math.max(0,Math.min(1,(t-i*.022)/.7));if(!u||u>=1)return;const travel=1-Math.pow(1-u,2),r=d[2]*(1-.4*u),x=L.spout_x+d[0]*travel,y=L.spout_y+d[1]*travel+7*u*u,alpha=Math.sin(Math.PI*u)*.52*(1-t);color(palette.accent,alpha).setFill;$.NSBezierPath.bezierPathWithOvalInRect($.NSMakeRect(x-r,y-r*1.6,r*2,r*(2.8-u))).fill;});
+  }catch(e){drawFailure=String(e);}
+ }}}});
+ const content=$.WhaleCanvas.alloc.initWithFrame($.NSMakeRect(0,0,L.width,L.height));hub.contentView=content;
+ const screen=$.NSScreen.mainScreen.visibleFrame,saved=read(ui+'/position.json');
+ hub.setFrameOrigin(clampPoint((saved&&Number.isFinite(saved.x)?saved.x:Number(screen.origin.x)+Number(screen.size.width)-102)-L.closed_whale_x,saved&&Number.isFinite(saved.y)?saved.y:Number(screen.origin.y)+88,L.closed_width,L.bubble));
+
+ function makeButton(parent,x,y,w,h,label,callback,more){const v=$.WhaleButton.alloc.initWithFrame($.NSMakeRect(x,y,w,h));const id=number++;v.tag=id;v.title=label;v.accessibilityLabel=label;v.bezeled=false;v.bordered=false;v.focusRingType=$.NSFocusRingTypeNone;v.target=receiver;v.action='clicked:';actions[id]=callback;buttonData[id]=Object.assign({view:v,label:label,baseWidth:w,baseHeight:h},more||{});parent.addSubview(v);const tracking=$.NSTrackingArea.alloc.initWithRectOptionsOwnerUserInfo(v.bounds,$.NSTrackingMouseEnteredAndExited|$.NSTrackingActiveAlways|$.NSTrackingInVisibleRect,v,null);v.addTrackingArea(tracking);return v;}
+ const spray=$.WhaleSpray.alloc.initWithFrame($.NSMakeRect(0,0,L.width,L.height));spray.wantsLayer=true;spray.hidden=true;
+ const whale=makeButton(content,L.closed_whale_x,0,L.bubble,L.bubble,'鲸鱼菜单',toggleOrbit,{whale:true,hint:'拖动贴边 · 右键设置'});
+ const badge=makeButton(content,2,20,28,28,'补丁更新提醒',()=>openCard('updates',null,-1),{badge:true,update:true,drop:{path:L.shapes[L.badge.shape],angle:L.badge.angle},icon:'M12 18V6 M7 11L12 6L17 11',hint:'点击查看更新'});badge.hidden=true;
+ const edgeBubble=makeButton(content,0,0,L.dock.size,L.dock.size,'贴边鲸鱼',()=>{peekDock(true);toggleOrbit();},{edge:true,update:true,drop:{path:L.shapes[1],angle:0},icon:'M8 10L12 14L16 10'});edgeBubble.hidden=true;
+ const hintButton=makeButton(dockHint.contentView,0,0,L.dock.size,L.dock.size,'贴边预览',()=>{},{edge:true,preview:true,drop:{path:L.shapes[1],angle:0},icon:'M8 10L12 14L16 10'});
+ const nodes=shell.categories.map((c,i)=>{const d=L.drops[i],v=makeButton(content,0,0,d.size,d.size,c.name,()=>openCard(c.id,null,i),{update:c.id==='updates',drop:{path:L.shapes[d.shape],angle:d.angle},icon:c.icon,hint:c.description});v.hidden=true;return v;});
+ function savePosition(){const p=dock?{x:dock.peek.x+L.closed_whale_x,y:dock.peek.y}:collapsedOrigin();write(ui+'/position.json',{x:Number(p.x),y:Number(p.y),edge:dock?dock.edge:null});}
+ function layoutNodes(progress){nodes.forEach((v,i)=>{const d=L.drops[i],t=Math.max(0,Math.min(1,(progress-i*.025)/.875)),ease=reduced()?t:1-Math.pow(1-t,3)*Math.cos(t*4.5),x=L.spout_x+(d.x-L.spout_x)*ease,y=L.height-L.spout_y+(L.spout_y-d.y)*ease+Math.sin(Math.PI*t)*7,size=d.size*(.25+.75*ease);frame(v,x-size/2,y-size/2,size,size);v.alphaValue=Math.min(1,t*4);if(testing)animationTopClearance=Math.min(animationTopClearance,L.height-y-size/2);v.needsDisplay=true;});spray.needsDisplay=true;}
+ function ensureMotionTimer(){if(fastTimer)return;fastTimer=$.NSTimer.timerWithTimeIntervalTargetSelectorUserInfoRepeats(1/60,receiver,'animate:',null,true);$.NSRunLoop.mainRunLoop.addTimerForMode(fastTimer,$.NSRunLoopCommonModes);}
+ function stopIdleMotion(){if(!animation&&!cardMotion&&!textMotion&&!dockAnimation&&fastTimer){fastTimer.invalidate;fastTimer=null;}}
+ function clearSpray(){spray.hidden=true;spray.removeFromSuperview;content.needsDisplay=true;}
+ function startAnimation(direction){clearSpray();if(direction==='open'&&!reduced()){content.addSubviewPositionedRelativeTo(spray,$.NSWindowBelow,whale);spray.hidden=false;}animation={start:Date.now(),duration:reduced()?1:direction==='close'?shell.motion.close_ms:shell.motion.duration_ms,direction:direction};ensureMotionTimer();}
+ function animate(){const now=Date.now(),kind=cardMotion?'card':animation?'menu':dockAnimation?'dock':'idle',draws=profile.draws;if(animation){const t=Math.min(1,(now-animation.start)/animation.duration);layoutNodes(animation.direction==='close'?1-t:t);if(t>=1){const close=animation.direction==='close';animation=null;clearSpray();if(close)hideOrbit();}}animateCard(now);animateText(now);animateDock(now);stopIdleMotion();if(profiling){const v=kind==='card'&&card?card.contentView:hub.contentView,rep=v.bitmapImageRepForCachingDisplayInRect(v.bounds);v.cacheDisplayInRectToBitmapImageRep(v.bounds,rep);profile.frames.push({kind:kind,ms:Date.now()-now,draws:profile.draws-draws});}}
+
+ function collapseOrbit(){playBubble('close');if(card){closeCard(()=>startAnimation('close'));return;}tip.orderOut(null);startAnimation('close');}
+ function toggleOrbit(silent){if(dock&&!dock.revealed)peekDock(true);if(expanded){collapseOrbit();return;}if(!silent)playBubble('open');const f=collapsedOrigin(),b=boundsAt(Number(f.x)+L.bubble/2,Number(f.y)+L.bubble/2),p=clampPoint(Number(f.x)-L.whale_x,Number(f.y)-whaleBottom,L.width,L.height,b);hub.setFrameDisplay($.NSMakeRect(Number(p.x),Number(p.y),L.width,L.height),true);frame(whale,L.whale_x,whaleBottom,L.bubble,L.bubble);expanded=true;refreshUpdate();nodes.forEach(v=>{delete buttonData[Number(v.tag)].hoverFrame;v.hidden=false;});startAnimation('open');layoutNodes(0);tip.orderOut(null);}
+ function hideOrbit(){clearSpray();disposeCard();tip.orderOut(null);if(!expanded)return;const p=collapsedOrigin();expanded=false;animation=null;stopIdleMotion();nodes.forEach(v=>v.hidden=true);hub.setFrameDisplay($.NSMakeRect(Number(p.x)-L.closed_whale_x,Number(p.y),L.closed_width,L.bubble),true);frame(whale,L.closed_whale_x,0,L.bubble,L.bubble);refreshUpdate();savePosition();}
+
+ function openPreferences(){show(false,true);openCard('preferences',null,5);}
+ function hide(){hideDockHint();stopDockTimer();hideOrbit();hub.orderOut(null);tip.orderOut(null);hidden=true;}
+ function show(toggle,activate){if(toggle&&!hidden){hide();return;}hidden=false;ensureDockTimer();if(activate!==false)wakeDock();hub.orderFrontRegardless;if(activate!==false)app.activateIgnoringOtherApps(true);}
+ function showTip(button,title,description){if(card)return;
+  const a=$.NSMutableDictionary.dictionary;a.setObjectForKey(font(11,false),$.NSFontAttributeName);
+  const caption=title+' · '+description,width=Math.min(226,Math.ceil(Number($(caption).sizeWithAttributes(a).width))+22),height=30;
+  tip.setContentSize($.NSMakeSize(width,height));const body=$.WhaleSurface.alloc.initWithFrame($.NSMakeRect(0,0,width,height));rounded(body,9,palette.surface,palette.line);
+  const label=text(body,10,7,width-20,17,caption,11,false);label.textColor=color(palette.text);tip.contentView=body;tipBody=body;
+  const point=hub.convertPointToScreen($.NSMakePoint(Number(button.frame.origin.x)+Number(button.frame.size.width)/2,Number(button.frame.origin.y)));
+  tip.setFrameOrigin(clampPoint(Number(point.x)-width/2,Number(point.y)-36,width,height));if(!testing)tip.orderFrontRegardless;
+ }
+ function openCard(route,key,index){
+  tip.orderOut(null);if(dock)peekDock(true);const source=index===-1?badge:expanded?nodes[index||0]:whale,f=source.frame,p=hub.convertPointToScreen($.NSMakePoint(Number(f.origin.x)+Number(f.size.width)/2,Number(f.origin.y)+Number(f.size.height)/2));if(!expanded)toggleOrbit(true);const fresh=!card;
+  if(fresh){card=parkedCard||makePanel(L.card_width,L.card_height);parkedCard=null;card.title='Codex 模型补丁设置';card.hasShadow=false;
+   const size=Math.min(Number(f.size.width),Number(f.size.height))-8;
+   card.setFrameOrigin(clampPoint(Number(p.x)-24,Number(p.y)-L.card_height+24,L.card_width,L.card_height));
+   cardSource={x:Number(p.x)-Number(card.frame.origin.x),y:L.card_height-(Number(p.y)-Number(card.frame.origin.y)),size:Math.max(16,size)};cardProgress=0;
+  }
+  if(route===current.route&&key===current.key)render(current);else{render(Object.assign({},current,{title:(shell.categories.find(c=>c.id===route.split('/')[0])||shell.categories[0]).name,rows:[],buttons:[],subtitle:'正在载入…'}));send('navigate',{},route,key);}
+  if(fresh||cardMotion&&cardMotion.to===0){playBubble('open');startCardMotion(1);}if(!testing){card.makeKeyAndOrderFront(null);app.activateIgnoringOtherApps(true);}
+ }
+ function startCardMotion(to){textMotion=null;prepareCardImage();cardAfterClose=to?null:cardAfterClose;cardMotion={start:Date.now(),from:cardProgress,to:to,duration:reduced()?1:(to?L.morph.duration_ms:L.morph.close_ms)*Math.max(.25,Math.abs(to-cardProgress))};ensureMotionTimer();animateCard(Date.now());}
+ function closeCard(after){if(!card){if(after)after();return;}playBubble('close');cardAfterClose=after||null;snapshotDirty=true;startCardMotion(0);}
+ function disposeCard(){cardMotion=null;textMotion=null;deferredView=null;if(card){card.orderOut(null);parkedCard=card;card=null;}cardSource=null;cardAfterClose=null;stopIdleMotion();}
+ function restoreCardControls(){if(!cardBody)return;frame(cardClip,1,1,318,418);frame(cardBody,-1,-1,320,420);cardBody.setBoundsSize($.NSMakeSize(320,420));cardGroups.forEach(g=>{g.view.alphaValue=1;g.view.setFrameOrigin($.NSMakePoint(g.x,g.y));});cardClip.hidden=false;}
+ function prepareCardImage(){if(!cardBody||cardImage&&!snapshotDirty)return;const started=Date.now();restoreCardControls();const rep=cardBody.bitmapImageRepForCachingDisplayInRect(cardBody.bounds);cardBody.cacheDisplayInRectToBitmapImageRep(cardBody.bounds,rep);cardImage=$.NSImage.alloc.initWithSize($.NSMakeSize(320,420));cardImage.addRepresentation(rep);snapshotDirty=false;if(profiling){if(!profile.capture)profile.capture=[];profile.capture.push(Date.now()-started);}}
+ function drawCardImage(outline){const s=cardSource,q=cardProgress*cardProgress*(3-2*cardProgress),x=(s.x-s.size/2)*(1-q),y=(s.y-s.size/2)*(1-q),w=s.size+(320-s.size)*q,h=s.size+(420-s.size)*q;
+  $.NSGraphicsContext.saveGraphicsState;outline.addClip;
+  [[0,78],[78,354],[354,420]].forEach((band,i)=>{const t=Math.max(0,Math.min(1,(cardProgress-.25-i*.05)/.55)),alpha=1-Math.pow(1-t,3);if(alpha<=0)return;const lift=7*(1-alpha)*h/420;$.NSGraphicsContext.saveGraphicsState;$.NSBezierPath.clipRect($.NSMakeRect(x,y+band[0]*h/420+lift,w,(band[1]-band[0])*h/420));cardImage.drawInRectFromRectOperationFractionRespectFlippedHints($.NSMakeRect(x,y+lift,w,h),$.NSZeroRect,$.NSCompositingOperationSourceOver,alpha,true,$.NSDictionary.dictionary);$.NSGraphicsContext.restoreGraphicsState;});
+  $.NSGraphicsContext.restoreGraphicsState;
+ }
+ function cardVisual(){if(!cardBody)return;if(cardProgress<1||cardMotion){prepareCardImage();cardClip.hidden=true;}else if(!textMotion)restoreCardControls();if(cardSurface)cardSurface.needsDisplay=true;}
+
+ function animateCard(now){if(!cardMotion||!card)return;const a=cardMotion,t=Math.min(1,(now-a.start)/a.duration);cardProgress=a.from+(a.to-a.from)*t;cardVisual();if(t>=1){cardMotion=null;if(a.to===0){motionChecks.closed++;const after=cardAfterClose;disposeCard();if(after)after();}else{motionChecks.opened++;restoreCardControls();if(deferredView){const next=deferredView;deferredView=null;render(next);}refreshUpdate();}}}
+
+ // A dock remains attached while peeking. Only a real drag detaches it.
+ function dockTarget(edge){const f=hub.frame,b=boundsAt(Number(f.origin.x)+48,Number(f.origin.y)+32),left=Number(b.origin.x),bottom=Number(b.origin.y),right=left+Number(b.size.width),top=bottom+Number(b.size.height),n=L.dock.size;
+  const p=clampPoint(Number(f.origin.x),Number(f.origin.y),L.closed_width,L.bubble,b);let x=Number(p.x),y=Number(p.y);
+  if(edge==='left')x=left+5;if(edge==='right')x=right-L.closed_width-5;if(edge==='bottom')y=bottom+5;if(edge==='top')y=top-L.bubble-5;
+  const sx=edge==='left'?left:edge==='right'?right-n:Math.max(left,Math.min(right-n,x+L.closed_whale_x+16)),sy=edge==='bottom'?bottom:edge==='top'?top-n:Math.max(bottom,Math.min(top-n,y+16));
+  return {edge:edge,peek:{x:x,y:y},small:{x:sx,y:sy},revealed:true,hoverArmed:true};
+ }
+ function dockAt(edge,instant,requireLeave){hideDockHint();hideOrbit();dock=dockTarget(edge);dock.hoverArmed=!requireLeave;buttonData[Number(edgeBubble.tag)].drop.angle=L.dock.angles[edge];edgeBubble.needsDisplay=true;hub.setFrameDisplay($.NSMakeRect(dock.peek.x,dock.peek.y,L.closed_width,L.bubble),true);setDockReveal(false,instant);ensureDockTimer();savePosition();
+ }
+ function setDockReveal(show,instant){if(!dock)return;hideOrbit();dockLeave=0;dock.revealed=show;const f=hub.frame,from={x:Number(f.origin.x),y:Number(f.origin.y),w:Number(f.size.width),h:Number(f.size.height)},p=show?dock.peek:dock.small;
+  dockAnimation={start:Date.now(),duration:instant||reduced()?1:L.dock.duration_ms,from:from,to:{x:p.x,y:p.y,w:show?L.closed_width:L.dock.size,h:show?L.bubble:L.dock.size},show:show};whale.hidden=false;edgeBubble.hidden=false;badge.hidden=true;ensureMotionTimer();if(instant)animateDock(Date.now()+2);
+ }
+ function animateDock(now){if(!dockAnimation||!dock)return;const a=dockAnimation,t=Math.min(1,(now-a.start)/a.duration),e=t*t*(3-2*t),mix=(k)=>a.from[k]+(a.to[k]-a.from[k])*e;
+  const w=mix('w'),h=mix('h'),reveal=Math.max(0,Math.min(1,(w-L.dock.size)/(L.closed_width-L.dock.size))),s=20+44*reveal;
+  hub.setFrameDisplay($.NSMakeRect(mix('x'),mix('y'),w,h),true);frame(whale,(w-s)*reveal,(h-s)/2,s,s);whale.alphaValue=reveal;const n=L.dock.size*(1+.045*Math.sin(Math.PI*t));frame(edgeBubble,(w-n)/2,(h-n)/2,n,n);edgeBubble.alphaValue=1-reveal;
+  if(t>=1){dockAnimation=null;whale.hidden=!a.show;edgeBubble.hidden=a.show;whale.alphaValue=1;edgeBubble.alphaValue=1;if(a.show)frame(whale,L.closed_whale_x,0,L.bubble,L.bubble);refreshUpdate();stopIdleMotion();}
+ }
+ function peekDock(instant){if(dock&&(!dock.revealed||dockAnimation)){setDockReveal(true,instant);}}
+ function wakeDock(){if(dock){peekDock(true);dock.waitForHover=true;}}
+ function detachDock(){if(!dock)return;peekDock(true);dock=null;stopDockTimer();dockAnimation=null;edgeBubble.hidden=true;whale.hidden=false;dockLeave=0;savePosition();stopIdleMotion();}
+ function nearestEdge(){const f=hub.frame,b=boundsAt(Number(f.origin.x)+48,Number(f.origin.y)+32),x=Number(f.origin.x),y=Number(f.origin.y),dist=[['left',x-Number(b.origin.x)],['right',Number(b.origin.x)+Number(b.size.width)-x-L.closed_width],['bottom',y-Number(b.origin.y)],['top',Number(b.origin.y)+Number(b.size.height)-y-L.bubble]];dist.sort((a,b)=>a[1]-b[1]);return dist[0][1]<=L.dock.threshold?dist[0][0]:null;}
+ function hideDockHint(){dockHintEdge=null;dockHint.orderOut(null);}
+ function updateDockHint(){const edge=nearestEdge();if(!edge){hideDockHint();return;}const target=dockTarget(edge),changed=edge!==dockHintEdge;dockHintEdge=edge;buttonData[Number(hintButton.tag)].drop.angle=L.dock.angles[edge];hintButton.needsDisplay=true;dockHint.setFrameOrigin($.NSMakePoint(target.small.x,target.small.y));if(!testing){dockHint.orderFrontRegardless;if(changed){dockHint.alphaValue=.15;$.NSAnimationContext.beginGrouping;$.NSAnimationContext.currentContext.duration=reduced()?0:.1;dockHint.animator.alphaValue=.85;$.NSAnimationContext.endGrouping;}}}
+ function finishDrag(){hideDockHint();hideOrbit();const edge=nearestEdge();if(edge)dockAt(edge,false,true);else{dock=null;stopDockTimer();savePosition();}}
+ function ensureDockTimer(){if(dockTimer||!dock||hidden)return;dockTimer=$.NSTimer.timerWithTimeIntervalTargetSelectorUserInfoRepeats(L.dock.poll_ms/1000,receiver,'hoverTick:',null,true);$.NSRunLoop.mainRunLoop.addTimerForMode(dockTimer,$.NSRunLoopCommonModes);}
+ function stopDockTimer(){if(dockTimer){dockTimer.invalidate;dockTimer=null;}}
+ function dockHover(inside,now){if(!dock||hidden||mouseStart)return;if(dock.waitForHover){if(!inside)return;dock.waitForHover=false;}if(!dock.hoverArmed){if(!inside)dock.hoverArmed=true;return;}if(card){dockLeave=0;return;}if(inside){dockLeave=0;if(!dock.revealed)peekDock(false);}else if(dock.revealed&&!dockAnimation){if(!dockLeave)dockLeave=now;else if(now-dockLeave>=L.dock.leave_ms)setDockReveal(false,false);}}
+ function pollDock(){if(!dock||testing)return;const m=$.NSEvent.mouseLocation,f=hub.frame;dockHover(Number(m.x)>=Number(f.origin.x)-4&&Number(m.x)<=Number(f.origin.x)+Number(f.size.width)+4&&Number(m.y)>=Number(f.origin.y)-4&&Number(m.y)<=Number(f.origin.y)+Number(f.size.height)+4||Number(m.x)>=dock.small.x-4&&Number(m.x)<=dock.small.x+L.dock.size+4&&Number(m.y)>=dock.small.y-4&&Number(m.y)<=dock.small.y+L.dock.size+4,Date.now());}
+
+ function animateText(now){if(!textMotion||!card)return;const elapsed=now-textMotion;cardGroups.forEach((g,i)=>{const t=Math.max(0,Math.min(1,(elapsed-i*12)/180)),e=1-Math.pow(1-t,3);g.view.alphaValue=e;g.view.setFrameOrigin($.NSMakePoint(g.x,g.y+6*(1-e)));});if(elapsed>=180+cardGroups.length*12){textMotion=null;restoreCardControls();}}
+ function clearActions(){if(updateWidgets)updateWidgets.bar.stopAnimation(null);updateWidgets=null;cardButtons.forEach(id=>{delete actions[id];delete buttonData[id];});cardButtons=[];}
+ function cardButton(parent,x,y,w,label,callback,style){const v=makeButton(parent,x,y,w,30,label,callback,{style:style});cardButtons.push(Number(v.tag));return v;}
+ function render(v){if(cardMotion){deferredView=v;return;}const renderStarted=Date.now(),signature=JSON.stringify(Object.assign({},v,{notice:''}));current=v;if(!card){renderedSignature='';return;}if(cardBody&&signature===renderedSignature){if(notice&&ObjC.unwrap(notice.stringValue)!==String(v.notice||'')){notice.stringValue=v.notice||'';snapshotDirty=true;}cardVisual();return;}renderedSignature=signature;cardImage=null;snapshotDirty=true;palette=shell.palettes[dark()?'dark':'light'];nodes.forEach(n=>n.needsDisplay=true);if(!card)return;if(scroll)$.NSNotificationCenter.defaultCenter.removeObserverNameObject(receiver,$.NSViewBoundsDidChangeNotification,scroll.contentView);retiredPages.push({root:cardSurface,body:cardBody,doc:cardDocument,groups:cardGroups,buttons:Object.values(buttonData),surfaces:Object.values(surfaces)});if(retiredPages.length>2)retiredPages.shift();clearActions();Object.keys(surfaces).forEach(k=>delete surfaces[k]);Object.keys(fields).forEach(k=>delete fields[k]);rowViews=[];const body=$.WhaleFlippedView.alloc.initWithFrame($.NSMakeRect(0,0,320,420));const root=$.WhaleFlippedView.alloc.initWithFrame($.NSMakeRect(0,0,320,420));rounded(root,16,palette.surface,palette.line);surfaces[ObjC.unwrap(root.identifier)].card=true;cardClip=$.WhaleFlippedView.alloc.initWithFrame(root.bounds);cardClip.clipsToBounds=true;root.addSubview(cardClip);cardClip.addSubview(body);card.contentView=root;cardSurface=root;cardBody=body;card.appearance=$.NSAppearance.appearanceNamed(dark()?$.NSAppearanceNameDarkAqua:$.NSAppearanceNameAqua);
+  text(body,18,16,250,23,current.title,16,true);text(body,18,43,280,30,current.subtitle||'',11,false).textColor=color(palette.muted);
+  cardButton(body,276,11,30,'×',()=>closeCard());const foot=current.footer||{columns:2,rows:2,top:338,width:143,gap:6};
+  const statusTop=foot.rows?foot.top-28:382,bottom=statusTop-6;let top=78;if(current.searchable){search=input(body,18,78,284,'','搜索',false);search.delegate=receiver;top=118;}else search=null;
+  scroll=$.NSScrollView.alloc.initWithFrame($.NSMakeRect(12,top,296,bottom-top));scroll.hasVerticalScroller=true;scroll.autohidesScrollers=true;scroll.scrollerStyle=$.NSScrollerStyleOverlay;scroll.verticalScroller.knobStyle=dark()?$.NSScrollerKnobStyleLight:$.NSScrollerKnobStyleDark;scroll.drawsBackground=false;scroll.contentView.postsBoundsChangedNotifications=true;$.NSNotificationCenter.defaultCenter.addObserverSelectorNameObject(receiver,'scrollChanged:',$.NSViewBoundsDidChangeNotification,scroll.contentView);scroll.borderType=$.NSNoBorder;body.addSubview(scroll);
+  const doc=$.WhaleFlippedView.alloc.initWithFrame($.NSMakeRect(0,0,286,1));scroll.documentView=doc;cardDocument=doc;let y=0;
+  for(const row of current.rows||[]){const height=row.type==='update'?182:row.type==='field'?(row.kind==='toggle'?38:row.hint?84:66):row.type==='report'?210:row.type==='note'?60:row.type==='action'?36:56;const entry={view:null,row:row,height:height,y:y,filtered:false};rowViews.push(entry);y+=height+6;if(row.type==='item')continue;const group=$.WhaleFlippedView.alloc.initWithFrame($.NSMakeRect(6,entry.y,274,height));doc.addSubview(group);entry.view=group;
+   if(row.type==='update'){updateRow(group);}
+   else if(row.type==='field'){if(row.kind==='toggle'){const c=makeButton(group,0,0,274,34,row.label,()=>{const d=buttonData[Number(c.tag)];d.checked=!d.checked;c.needsDisplay=true;},{toggle:true,checked:Boolean(row.value)});c.state=row.value?1:0;cardButtons.push(Number(c.tag));fields[row.key]={control:c,kind:row.kind};}
+    else{text(group,4,0,266,20,row.label,11,true);let c;if(row.kind==='choice'){c=$.NSPopUpButton.alloc.initWithFramePullsDown($.NSMakeRect(0,23,274,32),false);c.addItemsWithTitles($(row.choices.map(x=>x[1])));c.selectItemAtIndex(Math.max(0,row.choices.findIndex(x=>x[0]===row.value)));c.bordered=false;c.font=font(12,false);const bg=$.WhaleFlippedView.alloc.initWithFrame($.NSMakeRect(0,23,274,32));rounded(bg,10,palette.field,palette.line);group.addSubview(bg);group.addSubview(c);}else{c=input(group,0,23,row.kind==='file'?232:274,row.value,'',row.kind==='secret');if(row.kind==='file')cardButton(group,236,22,38,'…',()=>{const picker=$.NSOpenPanel.openPanel;picker.canChooseFiles=true;picker.canChooseDirectories=false;if(Number(picker.runModal)===1)c.stringValue=picker.URL.path;});}fields[row.key]={control:c,kind:row.kind,choices:row.choices};if(row.hint)text(group,4,59,266,22,row.hint,10,false).textColor=color(palette.muted);}}
+
+   else if(row.type==='action'){cardButton(group,0,0,274,row.title,()=>act(row),row.style);}
+   else if(row.type==='report'){const t=$.NSTextView.alloc.initWithFrame($.NSMakeRect(0,0,274,210));t.string=row.text;t.editable=false;t.selectable=true;t.font=font(11,false);t.textColor=color(palette.text);t.backgroundColor=color(palette.field);t.textContainerInset=$.NSMakeSize(10,10);group.addSubview(t);}
+   else{const t=text(group,5,3,264,55,row.text,12,false);t.lineBreakMode=$.NSLineBreakByWordWrapping;t.textColor=color(palette.muted);}}
+  frame(doc,0,0,286,Math.max(y,bottom-top));notice=text(body,18,statusTop,226,21,current.notice||'',10,false);notice.textColor=color(palette.muted);cancelButton=cardButton(body,248,statusTop-4,56,'取消',cancelPending);cancelButton.hidden=!pending;
+  refreshUpdate();const footerButtons=(current.back?[{title:'返回',back:true}]:[]).concat(current.buttons||[]);footerButtons.forEach((b,i)=>cardButton(body,14+(i%foot.columns)*(foot.width+foot.gap),foot.top+Math.floor(i/foot.columns)*36,foot.width,b.title,()=>b.back?send('navigate',{},current.back,current.key):act(b),b.style));
+  visibleRows();cardGroups=[];const children=body.subviews;for(let i=0;i<Number(children.count);i++){const view=children.objectAtIndex(i);cardGroups.push({view:view,x:Number(view.frame.origin.x),y:Number(view.frame.origin.y)});}if(cardProgress===1&&!reduced()){textMotion=Date.now();animateText(textMotion);ensureMotionTimer();}cardVisual();if(profiling)profile.render.push(Date.now()-renderStarted);
+ }
+ function updateRow(group){
+  const title=text(group,4,2,266,22,'',13,true),version=text(group,4,28,266,19,'',11,false),detail=text(group,4,52,266,51,'',11,false);detail.lineBreakMode=$.NSLineBreakByWordWrapping;detail.textColor=color(palette.muted);version.textColor=color(palette.muted);
+  const bar=$.NSProgressIndicator.alloc.initWithFrame($.NSMakeRect(4,110,266,6));bar.style=$.NSProgressIndicatorStyleBar;bar.minValue=0;bar.maxValue=100;group.addSubview(bar);
+  const units=text(group,4,123,266,18,'',10,false);units.textColor=color(palette.muted);
+  const primary=cardButton(group,4,146,136,'开始更新',()=>updateAction());updateWidgets={title:title,version:version,detail:detail,bar:bar,units:units,primary:primary};
+ }
+ function updateAction(){const p=updateState;if(!p.id||pending)return;const command=p.can_launch?'launch':p.can_start?'start':null;if(command)send('update_action',{},'updates',null,{id:p.id,phase:p.phase,command:command});}
+ function refreshUpdate(){
+  let p=read(directory+'/progress.json');const phases=['available','checking','downloading','building','verifying','waiting_for_exit','closing','installing','activating','completed','failed'];
+  if(!p||p.edition!==initial.edition||!String(p.id||'').match(/^[a-f0-9]{32}$/)||phases.indexOf(p.phase)<0)p={};
+  updateState=p;const attention=Boolean(p.id&&p.phase!=='completed');if(attention!==updateAttention){updateAttention=attention;nodes.forEach(n=>n.needsDisplay=true);badge.needsDisplay=true;}
+  edgeBubble.needsDisplay=true;badge.hidden=Boolean(dock&&(!dock.revealed||dockAnimation))||!(p.id&&(attention||p.can_launch));frame(badge,(expanded?L.whale_x:L.closed_whale_x)+L.badge.offset_x,(expanded?whaleBottom:0)+L.bubble-L.badge.offset_y-L.badge.size,L.badge.size,L.badge.size);
+  if(!updateWidgets||cardMotion)return;const v=updateWidgets;snapshotDirty=true;if(!card||current.route!=='updates'){v.bar.stopAnimation(null);return;}
+  v.title.stringValue=String(p.title||'当前没有待安装的补丁').slice(0,100);v.version.stringValue=p.version?'目标版本 · '+String(p.version).slice(0,70):'已安装 · '+String(initial.version||'');
+  v.detail.stringValue=String(p.detail||'可检查补丁更新，或单独同步模型与规格。').slice(0,220);
+  const known=Number.isInteger(p.completed)&&Number.isInteger(p.total)&&p.total>0,active=p.id&&['available','waiting_for_exit','completed','failed'].indexOf(p.phase)<0;
+  v.bar.indeterminate=Boolean(active&&!known);if(active&&!known)v.bar.startAnimation(null);else{v.bar.stopAnimation(null);v.bar.doubleValue=known?Math.max(0,Math.min(100,p.completed*100/p.total)):p.phase==='completed'?100:0;}
+  const seconds=Number.isFinite(p.phase_started_at)?Math.max(0,Math.floor(Date.now()/1000-p.phase_started_at)):0;
+  v.units.stringValue=known?p.completed+' / '+p.total:active?'当前步骤 · '+(seconds>=60?Math.floor(seconds/60)+' 分 '+seconds%60+' 秒':seconds+' 秒'):p.phase==='completed'?'已完成':'';
+  const visible=Boolean(p.can_start||p.can_launch);v.primary.hidden=!visible;v.primary.enabled=visible&&!pending;
+  buttonData[Number(v.primary.tag)].label=p.can_launch?'启动 Codex':'开始更新';v.primary.title=buttonData[Number(v.primary.tag)].label;v.primary.accessibilityLabel=v.primary.title;v.primary.needsDisplay=true;
+ }
+ function focusInput(control,active){snapshotDirty=true;const wrap=control.superview,id=wrap.identifier?ObjC.unwrap(wrap.identifier):'';if(surfaces[id]){surfaces[id].border=active?palette.accent:palette.line;wrap.needsDisplay=true;}}
+ function input(parent,x,y,w,value,placeholder,secret){const wrap=$.WhaleFlippedView.alloc.initWithFrame($.NSMakeRect(x,y,w,32));rounded(wrap,10,palette.field,palette.line);parent.addSubview(wrap);const c=secret?$.NSSecureTextField.alloc.initWithFrame($.NSMakeRect(9,6,w-18,21)):$.NSTextField.alloc.initWithFrame($.NSMakeRect(9,6,w-18,21));c.stringValue=String(value===undefined?'':value);c.placeholderString=placeholder;c.bezeled=false;c.drawsBackground=false;c.focusRingType=$.NSFocusRingTypeNone;c.delegate=receiver;c.textColor=color(palette.text);c.font=font(12,false);wrap.addSubview(c);return c;}
+
+ function visibleRows(){if(!scroll||!scroll.documentView)return;const b=scroll.contentView.bounds,top=Number(b.origin.y)-56,bottom=Number(b.origin.y)+Number(b.size.height)+56;
+  rowViews.forEach(entry=>{const visible=!entry.filtered&&entry.y+entry.height>=top&&entry.y<=bottom;if(visible&&!entry.view){const group=$.WhaleFlippedView.alloc.initWithFrame($.NSMakeRect(6,entry.y,274,entry.height));entry.view=group;scroll.documentView.addSubview(group);populateItem(group,entry.row);}if(entry.view&&Boolean(entry.view.hidden)===visible)entry.view.hidden=!visible;});snapshotDirty=true;
+ }
+ function populateItem(group,row){rounded(group,10,palette.field,null);text(group,11,7,250,21,row.title,12,true);text(group,11,29,250,20,row.subtitle,11,false).textColor=color(palette.muted);if(row.route){const hit=$.NSButton.alloc.initWithFrame($.NSMakeRect(0,0,274,56));hit.bordered=false;hit.transparent=true;const id=number++;hit.tag=id;actions[id]=()=>send('navigate',{},row.route,row.key);cardButtons.push(id);hit.target=receiver;hit.action='clicked:';hit.accessibilityLabel=row.title;group.addSubview(hit);}}
+ function filter(){snapshotDirty=true;const q=search?ObjC.unwrap(search.stringValue).toLowerCase():'';let y=0;rowViews.forEach(entry=>{entry.filtered=Boolean(q&&JSON.stringify(entry.row).toLowerCase().indexOf(q)<0);if(!entry.filtered){entry.y=y;if(entry.view)frame(entry.view,6,y,274,entry.height);y+=entry.height+6;}else if(entry.view)entry.view.hidden=true;});frame(scroll.documentView,0,0,286,Math.max(y,Number(scroll.frame.size.height)));scroll.contentView.scrollToPoint($.NSMakePoint(0,0));scroll.reflectScrolledClipView(scroll.contentView);visibleRows();}
+
+ function values(){const result={};Object.keys(fields).forEach(k=>{const f=fields[k];result[k]=f.kind==='toggle'?Boolean(buttonData[Number(f.control.tag)].checked):f.kind==='choice'?f.choices[Number(f.control.indexOfSelectedItem)][0]:ObjC.unwrap(f.control.stringValue);});return result;}
+ function act(b){if(b.intent==='hide'){hide();return;}if(b.intent==='quit'){quit();return;}if(b.intent==='copy'){const pb=$.NSPasteboard.generalPasteboard;pb.clearContents;pb.setStringForType($(b.text),$.NSPasteboardTypeString);notice.stringValue='已复制脱敏报告。';return;}if(b.intent==='select_all'||b.intent==='clear_all'){Object.keys(fields).filter(k=>k.indexOf('model_')===0).forEach(k=>{buttonData[Number(fields[k].control.tag)].checked=b.intent==='select_all';fields[k].control.needsDisplay=true;});return;}send(b.intent,values(),b.route||current.route,b.key===undefined?current.key:b.key,b);}
+ function cancelPending(){if(pending){write(jobs+'/'+pending.id+'.cancel',{id:pending.id});if(notice)notice.stringValue='正在取消…';}}
+ function send(intent,vals,route,key,extras){if(pending){if(notice)notice.stringValue='正在处理，稍后可继续。';return;}const id=ObjC.unwrap($.NSUUID.UUID.UUIDString).replace(/-/g,'').toLowerCase(),payload=Object.assign({intent:intent,values:vals||{},route:route||current.route,key:key,context:{draft:current.draft,available:current.available,specs:current.specs}},extras||{});write(jobs+'/'+id+'.request.json',{action:'hub',revision:current.revision,payload:payload});pending={id:id,payload:payload};if(cancelButton)cancelButton.hidden=false;if(notice)notice.stringValue='正在处理…';const task=$.NSTask.alloc.init;task.launchPath=python;task.arguments=$([controller,'execute','--state-dir',directory,'--request',id]);task.standardOutput=$.NSFileHandle.fileHandleWithNullDevice;task.standardError=$.NSFileHandle.fileHandleWithNullDevice;task.launch;}
+ function poll(){if(pending){const value=read(jobs+'/'+pending.id+'.result.json');if(value&&value.status!=='running'){const previous=pending;pending=null;if(cancelButton)cancelButton.hidden=true;remove(jobs+'/'+previous.id+'.result.json');remove(jobs+'/'+previous.id+'.cancel');if(value.status==='completed'){if(value.data.draft&&previous.payload.values.key)value.data.draft.key=previous.payload.values.key;render(value.data);}else if(notice)notice.stringValue=value.error.message;}}
+  refreshUpdate();const raised=read(ui+'/raise.json');if(raised&&raised.time!==lastRaise){lastRaise=raised.time;if(raised.quit){quit();return;}if(raised.notify){if(hidden)show(false,false);}else{show(raised.toggle===true);if(raised.page)openCard(raised.page,null,2);}}const key=read(ui+'/hotkey.json');if(key&&key.error&&notice&&current.route==='preferences')notice.stringValue=key.error;}
+ let testPhase=0,testResult=null;
+ function quit(){if(closing)return;closing=true;hideDockHint();stopDockTimer();Object.keys(sounds).forEach(k=>sounds[k].stop);if(pending)write(jobs+'/'+pending.id+'.cancel',{id:pending.id});hub.orderOut(null);tip.orderOut(null);if(card)card.orderOut(null);app.terminate(null);}
+ function tick(){const now=Date.now();if(!testing&&now-lastHeartbeat>2000){lastHeartbeat=now;write(ui+'/renderer.json',{pid:Number($.NSProcessInfo.processInfo.processIdentifier),visible:!hidden,card:!!card,route:current.route,time:now/1000});}if(now-lastPoll>200){lastPoll=now;poll();}if(testing){if(testPhase===0){testPhase=profiling?10:1;toggleOrbit();if(profiling)return;const route=(initial.entry||{}).page||'models';openCard(route,null,0);send('refresh',{},route,null);}else if(testPhase===10&&!animation){testPhase=1;const route=(initial.entry||{}).page||'models';openCard(route,null,0);send('refresh',{},route,null);}else if(!pending&&!animation&&!cardMotion&&testPhase===1){testPhase=2;testResult={categories:nodes.length,models:initial.models.length,request_completed:true,event_loop:true,closed:true,status:'操作完成。',orbit_expanded:expanded,draw_error:drawFailure,animation_top_clearance:animationTopClearance,route:current.route,update_attention:updateAttention,badge_visible:!badge.hidden,update_primary:updateWidgets?String(ObjC.unwrap(updateWidgets.primary.title)):null};if(loopTest){testLongList();captureMorph();}closeCard();}else testMotion(now);}}
+ function testLongList(){if(current.route!=='models'||rowViews.length<20)return;const initialRows=rowViews.filter(r=>r.view).length,last=rowViews[rowViews.length-1];scroll.contentView.scrollToPoint($.NSMakePoint(0,Math.max(0,Number(scroll.documentView.frame.size.height)-Number(scroll.contentView.bounds.size.height))));scroll.reflectScrolledClipView(scroll.contentView);visibleRows();const tail=Boolean(last.view&&!last.view.hidden);search.stringValue=last.row.title;filter();const matches=rowViews.filter(r=>!r.filtered),searchable=matches.length===1&&matches[0]===last&&last.y===0&&!last.view.hidden;search.stringValue='';filter();motionChecks.list={total:rowViews.length,initial_rows:initialRows,tail_visible:tail,searchable:searchable,restored:!rowViews[0].view.hidden};snapshotDirty=true;}
+ function captureMorph(){const menu=content.bitmapImageRepForCachingDisplayInRect(content.bounds);content.cacheDisplayInRectToBitmapImageRep(content.bounds,menu);menu.representationUsingTypeProperties($.NSBitmapImageFileTypePNG,$.NSDictionary.dictionary).writeToFileAtomically($(ui+'/native-menu.png'),true);for(const progress of [.3,.6,.85,1]){cardProgress=progress;cardVisual();cardSurface.displayIfNeeded;const rep=cardSurface.bitmapImageRepForCachingDisplayInRect(cardSurface.bounds);cardSurface.cacheDisplayInRectToBitmapImageRep(cardSurface.bounds,rep);rep.representationUsingTypeProperties($.NSBitmapImageFileTypePNG,$.NSDictionary.dictionary).writeToFileAtomically($(ui+'/native-morph-'+Math.round(progress*100)+'.png'),true);}cardVisual();}
+ function testMotion(now){
+  if(testPhase===2&&!card&&!cardMotion){testPhase=3;dockAt('left',true);dockHover(true,now);}
+  else if(testPhase===3&&!dockAnimation){motionChecks.hover_revealed=Boolean(dock&&dock.revealed&&!whale.hidden&&edgeBubble.hidden);testPhase=4;openCard(current.route,current.key,0);}
+  else if(testPhase===4&&!cardMotion&&!animation){dockHover(false,now);dockHover(false,now+1000);motionChecks.form_held=Boolean(dock&&dock.revealed&&card);testPhase=5;closeCard();}
+  else if(testPhase===5&&!card&&!cardMotion){dockHover(false,now);dockHover(false,now+1000);testPhase=6;}
+  else if(testPhase===6&&!dockAnimation){motionChecks.leave_retracted=Boolean(dock&&!dock.revealed&&!edgeBubble.hidden&&Number(hub.frame.size.width)===L.dock.size);detachDock();
+   const b=$.NSScreen.mainScreen.visibleFrame;hub.setFrameOrigin($.NSMakePoint(Number(b.origin.x)+Number(b.size.width)/2,Number(b.origin.y)+Number(b.size.height)/2));finishDrag();dockHover(false,now);dockHover(false,now+1000);motionChecks.detached=!dock;
+   dockAt('left',true);wakeDock();dockHover(false,now);dockHover(false,now+1000);motionChecks.explicit_wake_holds=Boolean(dock.revealed);dockHover(true,now+1001);dockHover(false,now+1002);dockHover(false,now+2000);motionChecks.explicit_wake_retracts=!dock.revealed;detachDock();
+   motionChecks.audio_loaded=Object.keys(sounds).length;motionChecks.edges=[];motionChecks.directions=[];for(const edge of ['left','right','top','bottom']){dockAt(edge,true);motionChecks.directions.push(buttonData[Number(edgeBubble.tag)].drop.angle);const f=hub.frame,r=boundsAt(Number(f.origin.x)+16,Number(f.origin.y)+16);motionChecks.edges.push(Number(f.origin.x)>=Number(r.origin.x)&&Number(f.origin.y)>=Number(r.origin.y)&&Number(f.origin.x)+32<=Number(r.origin.x)+Number(r.size.width)&&Number(f.origin.y)+32<=Number(r.origin.y)+Number(r.size.height));detachDock();}
+   dockAt('left',true,true);dockHover(true,now);motionChecks.release_stays_collapsed=!dock.revealed;dockHover(false,now+1);dockHover(true,now+2);motionChecks.reentry_reveals=dock.revealed;detachDock();
+   const bounds=$.NSScreen.mainScreen.visibleFrame;hub.setFrameOrigin($.NSMakePoint(Number(bounds.origin.x)+5,Number(bounds.origin.y)+100));updateDockHint();motionChecks.arrival_hint=dockHintEdge==='left';hub.setFrameOrigin($.NSMakePoint(Number(bounds.origin.x)+Number(bounds.size.width)/2,Number(bounds.origin.y)+Number(bounds.size.height)/2));updateDockHint();motionChecks.hint_cleared=dockHintEdge===null;
+   const mode=current.options.motion;current.options.motion='reduced';dockAt('right',true);peekDock(true);motionChecks.reduced=Boolean(dock.revealed&&!dockAnimation);detachDock();current.options.motion=mode;stopIdleMotion();motionChecks.idle_timer_stopped=!fastTimer&&!dockTimer;motionChecks.spray_released=Boolean(spray.hidden)&&!Boolean(content.subviews.containsObject(spray));
+   if(profiling)testResult.profile=profile;testResult.motion=motionChecks;testResult.draw_error=drawFailure;$.NSFileHandle.fileHandleWithStandardOutput.writeData($(JSON.stringify(testResult)+'\n').dataUsingEncoding($.NSUTF8StringEncoding));quit();
+  }
+ }
+ const localKeys=$.NSEvent.addLocalMonitorForEventsMatchingMaskHandler($.NSEventMaskKeyDown,event=>{if(Number(event.keyCode)===53){if(card){closeCard();}else if(expanded)collapseOrbit();else hide();return null;}return event;});
+ lastRaise=(read(ui+'/raise.json')||{}).time||'';app.finishLaunching;if(saved&&['left','right','top','bottom'].indexOf(saved.edge)>=0)dockAt(saved.edge,true);refreshUpdate();if(!testing){if(recoverHidden)hide();else show(false,!(initial.entry&&initial.entry.notify));if(!recoverHidden&&initial.entry&&initial.entry.page)openCard(initial.entry.page,null,2);}const timer=$.NSTimer.timerWithTimeIntervalTargetSelectorUserInfoRepeats(.25,receiver,'tick:',null,true);$.NSRunLoop.mainRunLoop.addTimerForMode(timer,$.NSRunLoopCommonModes);app.run;timer.invalidate;$.NSEvent.removeMonitor(localKeys);
+}

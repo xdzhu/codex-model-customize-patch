@@ -1,0 +1,35 @@
+# Build output contains private configuration, vendor code and complete app copies.
+.local/
+build/
+dist/
+backups/
+staging/
+original/
+*.app/
+*.asar
+*.asar.unpacked/
+*models.json
+*manifest.json
+config*.toml
+installed.json
+*-result.json
+*.log
+*.ips
+*.zip
+*.tar.gz
+.env
+.env.*
+auth.json
+__pycache__/
+*.py[cod]
+.DS_Store
+.venv/
+node_modules/
+
+# Local signing identities and temporary private material never belong in releases.
+signing/
+*.keychain
+*.keychain-db
+*.p12
+*.pfx
+*.pem

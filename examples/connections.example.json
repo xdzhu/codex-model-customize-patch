@@ -1,0 +1,17 @@
+{
+  "locals": [
+    {
+      "id": "local-example",
+      "name": "Example API",
+      "kind": "openai",
+      "base_url": "https://api.example.com/v1",
+      "env_key": "THIRD_PARTY_API_KEY",
+      "wire_api": "responses",
+      "models": ["claude-sonnet-4-6", "claude-opus-5-5"],
+      "model_specs": {
+        "claude-sonnet-4-6": {"context_window": 200000},
+        "claude-opus-5-5": {"context_window": 200000}
+      }
+    }
+  ]
+}

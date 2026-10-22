@@ -1,0 +1,33 @@
+This repository contains an independently maintained local compatibility patch.
+It is not affiliated with or endorsed by OpenAI or DeepSeek.
+
+The MIT license covers the project's original patch code and documentation.
+It does not license the ChatGPT/Codex application, vendor model instructions,
+third-party software embedded in the application, or the referenced trademarks.
+Those materials are not distributed by this repository.
+
+The outer whale contour in src/brand.svg is adapted from DeepSeek's official
+DeepSeek-V2 logo. Its interior is replaced with an original terminal prompt:
+https://github.com/deepseek-ai/DeepSeek-V2/blob/main/figures/logo.svg
+Copyright (c) 2023 DeepSeek.
+The upstream code license is MIT:
+https://github.com/deepseek-ai/DeepSeek-V2/blob/main/LICENSE-CODE
+The artwork identifies this independent patch; it does not imply endorsement.
+
+The patch includes short version-specific matching strings required to locate
+the supported program behavior. Complete vendor source files and binaries are
+read only from the user's own local installation and kept in local build output.
+
+The ASAR integrity dictionary encoding and sentinel are documented in Electron:
+https://github.com/electron/electron/blob/main/shell/common/asar/integrity_digest.mm
+https://github.com/electron/electron/blob/main/shell/common/asar/archive_mac.mm
+Electron is distributed under the MIT license and includes Chromium and other
+components under their respective licenses. Its implementation was consulted
+to keep integrity verification consistent; no framework binary is shipped here.
+
+DeepSeek API model documentation:
+https://api-docs.deepseek.com/quick_start/agent_integrations/
+
+The routing behavior originated in the maintainer's local Codex provider patch
+and was adapted for this release. This repository does not bundle earlier
+third-party patch installers or unrelated provider-selection implementations.
