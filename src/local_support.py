@@ -51,6 +51,12 @@ def validate(value):
         raise ValueError('Invalid chat-only model list')
     result.setdefault('model_specs',{})
     if not isinstance(result['model_specs'],dict):raise ValueError('Invalid model specifications')
+    for model, spec in result['model_specs'].items():
+        if not isinstance(model,str) or not isinstance(spec,dict):raise ValueError('Invalid model specification')
+        if ('default_max_output_tokens' in spec and
+                (type(spec['default_max_output_tokens']) is not int or
+                 not 1 <= spec['default_max_output_tokens'] <= 131072)):
+            raise ValueError('Invalid default output token budget')
     return result
 
 

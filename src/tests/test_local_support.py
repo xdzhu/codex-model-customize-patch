@@ -76,7 +76,8 @@ class LocalTests(unittest.TestCase):
     def test_environment_credential_is_referenced_without_storing_secret(self):
         import inference_adapter
         import official_client
-        connection={**self.connection(),'kind':'openai','env_key':'SYNTHETIC_MODEL_API_KEY'}
+        connection={**self.connection(),'kind':'openai','env_key':'SYNTHETIC_MODEL_API_KEY',
+                    'model_specs':{'test-model':{'default_max_output_tokens':32768}}}
         with mock.dict(os.environ,{'SYNTHETIC_MODEL_API_KEY':'synthetic-secret'}):
             self.assertEqual(local.environment_key(connection['env_key']),'synthetic-secret')
             self.assertEqual(inference_adapter.read_credential({'kind':'env','name':connection['env_key']}),'synthetic-secret')
@@ -86,6 +87,7 @@ class LocalTests(unittest.TestCase):
         routes=official_client.adapter_routes({'locals':[connection]},
             {'test-model':{'provider':'local-test','context_window':32768}})
         self.assertEqual(routes['test-model']['credential'],{'kind':'env','name':connection['env_key']})
+        self.assertEqual(routes['test-model']['default_max_output_tokens'],32768)
 
     def test_connection_change_triggers_new_snapshot_even_with_same_model_specs(self):
         import model_sync as ms

@@ -100,6 +100,9 @@ def adapter_routes(manifest, routes, platform=None):
                 value["credential"] = {"kind":"file", "path":connection["key_file"]}
             elif connection.get("env_key"):
                 value["credential"] = {"kind":"env", "name":connection["env_key"]}
+            spec = connection.get("model_specs", {}).get(model, {})
+            if "default_max_output_tokens" in spec:
+                value["default_max_output_tokens"] = spec["default_max_output_tokens"]
             result[model] = value
         result[model]['context_window'] = route.get('context_window')
     return result
