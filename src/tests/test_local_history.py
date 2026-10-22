@@ -5,7 +5,8 @@ import tempfile
 import threading
 import unittest
 
-from local_history import read_visible_history, summarize_records, thread_identity, visible_record
+from local_history import (read_visible_history, summarize_records, thread_identity,
+                           visible_record, has_readable_handoff)
 from legacy_history import LegacyHistoryError
 
 THREAD = '11111111-1111-4111-8111-111111111111'
@@ -77,6 +78,14 @@ class LocalHistoryTests(unittest.TestCase):
         self.assertIsNone(visible_record({'type':'message','role':'assistant','channel':'analysis','content':'private'}))
         result=visible_record({'type':'message','role':'user','content':[{'type':'input_image','image_url':'data:image/png;base64,private-pixels'}]})
         self.assertNotIn('private-pixels',json.dumps(result))
+
+    def test_handoff_requires_public_message_content_after_compaction(self):
+        large='A readable handoff with task facts. ' * 50
+        user={'role':'user','content':'Review that handoff.'}
+        self.assertFalse(has_readable_handoff([OPAQUE,{'type':'function_call_output','output':large},user],0))
+        self.assertFalse(has_readable_handoff([OPAQUE,{'role':'assistant','channel':'analysis','content':large},user],0))
+        self.assertTrue(has_readable_handoff([OPAQUE,{'role':'assistant','content':large},user],0))
+        self.assertTrue(has_readable_handoff([OPAQUE,{'role':'user','content':large*2}],0))
 
     def test_paginated_fork_recovers_parent_only_to_exact_fork_boundary(self):
         parent='22222222-2222-4222-8222-222222222222'

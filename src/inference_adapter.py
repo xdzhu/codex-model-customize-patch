@@ -437,7 +437,8 @@ def _legacy_request(handler, body, operation):
             return visible_reasoning(body, protected_reasoning=protected)
         if not profile.get('legacy_history_dir'):
             raise RelayError(409, 'local_history_unavailable', 'Local history recovery is not configured. Update the adapter configuration.')
-        from local_history import thread_identity, read_visible_history, summarize_records, recovery_limits, unavailable
+        from local_history import (thread_identity, read_visible_history, summarize_records,
+                                   recovery_limits, unavailable, HistorySizeLimit, has_readable_handoff)
         import hashlib
         thread = thread_identity(handler.headers)
         route = profile['routes'][body['model']]
@@ -456,8 +457,25 @@ def _legacy_request(handler, body, operation):
             return reduce_records([{'role':'assistant','content':summary}], operation.cancelled)
         converter = LegacyHistory(profile['legacy_history_dir'], 'local-v1:' + identity, summarize)
         previous = (profile['summary_model'],) if profile.get('summary_model') else ()
-        result=converter.convert(body, handler.headers, cancelled=operation.cancelled, protected_reasoning=protected,
-                                 cache_scope=b'\0' + thread.encode(), fallback_models=previous, normalize_cached=normalize_cached,progress=progress)
+        try:
+            result=converter.convert(body, handler.headers, cancelled=operation.cancelled, protected_reasoning=protected,
+                                     cache_scope=b'\0' + thread.encode(), fallback_models=previous,
+                                     normalize_cached=normalize_cached,progress=progress)
+        except HistorySizeLimit:
+            # A recent readable handoff can support this turn even when the
+            # older native rollout is too large to reconstruct. Do not cache
+            # this omission as a summary of the encrypted history.
+            opaque=[i for i,item in enumerate(body['input'])
+                    if isinstance(item,dict) and item.get('type')=='compaction']
+            if len(opaque)!=1 or not has_readable_handoff(body['input'],opaque[0]):
+                raise
+            result=visible_reasoning(body,protected_reasoning=protected)
+            compacted=next(i for i,item in enumerate(result['input'])
+                           if isinstance(item,dict) and item.get('type')=='compaction')
+            result['input'][compacted]={'role':'assistant','content':[{'type':'output_text',
+                'text':'Earlier official chat history was compacted into an encrypted item that this model cannot read. '
+                       'Use only the readable handoff and later messages that follow. Do not infer omitted earlier records; '
+                       'ask for a fuller handoff if needed.'}]}
         successful=True
         return result
     except ReasoningOriginError:

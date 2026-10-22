@@ -431,6 +431,36 @@ class AdapterConversionTests(unittest.TestCase):
         self.assertEqual(json.loads(raw)['error']['code'],'local_history_unavailable')
         self.assertFalse(self.upstream.records)
 
+    def test_oversized_history_uses_later_readable_handoff_without_caching_omission(self):
+        handoff='Readable task handoff: preserve the user goal and inspect the completed results. ' * 25
+        input_items=[{'type':'reasoning','id':'reasoning-before-compaction'},OPAQUE,
+                     {'role':'assistant','content':[{'type':'output_text','text':handoff}]},
+                     {'role':'user','content':'Review the handoff above.'}]
+        original=self.rollout.read_bytes()
+        with patch('local_history.MAX_VISIBLE_BYTES',64):
+            status,raw=self.request(input=input_items)
+        self.assertEqual(status,200,raw)
+        self.assertEqual(len(self.upstream.records),1)
+        sent=self.upstream.records[0][3]['input']
+        self.assertIn('cannot read',sent[0]['content'][0]['text'])
+        self.assertEqual(sent[1]['content'][0]['text'],handoff)
+        self.assertNotIn('synthetic-ciphertext',json.dumps(sent))
+        self.assertFalse(list(Path(self.profile['legacy_history_dir']).glob('*.json')))
+        self.assertEqual(self.rollout.read_bytes(),original)
+
+    def test_oversized_history_without_handoff_still_fails_before_inference(self):
+        with patch('local_history.MAX_VISIBLE_BYTES',64):
+            status,raw=self.request()
+        self.assertEqual(status,409,raw)
+        self.assertEqual(json.loads(raw)['error']['code'],'local_history_unavailable')
+        self.assertFalse(self.upstream.records)
+        self.rollout.unlink()
+        handoff='Readable task handoff. ' * 100
+        status,raw=self.request(input=[OPAQUE,{'role':'assistant','content':handoff},
+                                       {'role':'user','content':'Continue.'}])
+        self.assertEqual(status,409,raw)  # A missing source is not a size limit.
+        self.assertFalse(self.upstream.records)
+
     def test_old_official_summary_cache_needs_no_local_file_or_gpt_request(self):
         old=LegacyHistory(self.profile['legacy_history_dir'],'gpt-fixture',lambda *args:'Previously cached MARKER_FACT')
         old.convert({'input':[OPAQUE]},HEADERS)

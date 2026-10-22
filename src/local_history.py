@@ -23,6 +23,16 @@ def unavailable(detail='The readable local history is missing or incomplete'):
         '. Restore the original local chat history or supply a readable handoff. No GPT request was made.', 409)
 
 
+class HistorySizeLimit(LegacyHistoryError):
+    """A verified history is too large to reconstruct within bounded recovery."""
+
+
+def oversized():
+    return HistorySizeLimit('local_history_unavailable',
+        'The readable history exceeds the recovery size limit'
+        '. Restore the original local chat history or supply a readable handoff. No GPT request was made.', 409)
+
+
 def thread_identity(headers):
     values = []
     for key, value in headers.items():
@@ -77,6 +87,39 @@ def visible_record(item):
     raise unavailable('This native history item format is not yet supported')
 
 
+def has_readable_handoff(items, opaque_index):
+    """Require substantial public context after one opaque item before omitting it.
+
+    A later assistant handoff followed by a user request, or a self-contained
+    user handoff, can support a truthful continuation without replaying an
+    oversized historical rollout. Tool output and private reasoning never
+    qualify as the handoff.
+    """
+    if not isinstance(items, list) or not 0 <= opaque_index < len(items):
+        return False
+    assistant_handoff = False
+    for item in items[opaque_index + 1:]:
+        if not isinstance(item, dict):
+            continue
+        if item.get('type') == 'compaction':
+            return False
+        if item.get('type', 'message') != 'message' or item.get('channel') == 'analysis':
+            continue
+        if item.get('role') not in ('assistant', 'user'):
+            continue
+        content = item.get('content')
+        text = (content if isinstance(content, str) else
+                '\n'.join(part.get('text', '') for part in content
+                          if isinstance(part, dict) and part.get('type') in ('input_text', 'output_text', 'text')
+                          and isinstance(part.get('text'), str)) if isinstance(content, list) else '')
+        size = len(text.encode('utf-8'))
+        if item['role'] == 'assistant' and size >= 1024:
+            assistant_handoff = True
+        elif item['role'] == 'user' and (size >= 2048 or assistant_handoff and size > 0):
+            return True
+    return False
+
+
 def _matches(candidate, item):
     return (isinstance(candidate, dict) and candidate.get('type') == 'compaction'
             and candidate.get('encrypted_content') == item.get('encrypted_content')
@@ -125,8 +168,10 @@ def _events(home, thread_id, cancelled, budget, ancestry=(), boundary=None):
             if cancelled.is_set():
                 raise LegacyHistoryError('request_cancelled', 'History recovery was cancelled', 499)
             budget[0] += len(raw)
-            if len(raw) > MAX_ROLLOUT_LINE or budget[0] > MAX_SOURCE_BYTES or not raw.endswith(b'\n'):
+            if len(raw) > MAX_ROLLOUT_LINE or not raw.endswith(b'\n'):
                 raise unavailable('The readable history exceeds the recovery size limit or has an incomplete record')
+            if budget[0] > MAX_SOURCE_BYTES:
+                raise oversized()
             event = json.loads(raw)
             if not isinstance(event, dict):
                 raise unavailable('A native history record is malformed')
@@ -196,7 +241,7 @@ def read_visible_history(home, thread_id, item, *, cancelled):
                 if record is not None:
                     visible_bytes += len(json.dumps(record, ensure_ascii=False).encode())
                     if visible_bytes > MAX_VISIBLE_BYTES:
-                        raise unavailable('The readable history exceeds the recovery size limit')
+                        raise oversized()
                     records.append(record)
             elif kind not in ('event_msg', 'turn_context', 'token_usage_record', 'world_state',
                               'inter_agent_communication_metadata'):
