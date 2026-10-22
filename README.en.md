@@ -29,4 +29,6 @@ Reopen Codex and use the model picker. Official models remain available. To undo
 
 There is no configured automatic update feed for this fork; do not enable the background update monitor. Rebuild and verify after Codex updates. This adapter handles model traffic, so inspect the source before use. Local build output and connection files can contain sensitive operational data and must stay out of Git.
 
+The updated example lists Opus 5.5, Sonnet 5.5, and Sonnet 4.6 in menu order. A minimal Responses request to Sonnet 5.5 returned `42`, and an incremental catalog build passed isolated verification. That build has not yet been installed into the desktop app. The example context limits are placeholders; use values verified with your provider.
+
 Source base: upstream extension commit d2c4a8b8b614813846b8563c1c2e98a8bbbc829d. Original [MIT license](LICENSE) and [NOTICE](NOTICE) are retained. The added work covers environment-key authentication, Windows user environment variables, a compatible User-Agent, and an installer edge-case fix. This project is not affiliated with OpenAI, Anthropic, or API providers.
