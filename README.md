@@ -1,6 +1,6 @@
 # Codex 自定义模型菜单补丁
 
-[English](README.en.md) · [安装和验证记录](docs/INSTALLATION.md) · [架构](docs/ARCHITECTURE.md) · [许可](LICENSE)
+[English](README.en.md) · [安装和验证记录](docs/INSTALLATION.md) · [第三方模型输出额度](docs/OUTPUT_BUDGET.md) · [架构](docs/ARCHITECTURE.md) · [许可](LICENSE)
 
 这是 [limyum-creator/codex-deepseek-patch](https://github.com/limyum-creator/codex-deepseek-patch) 扩展版的派生项目。它将兼容 API 的第三方模型加入 Codex 桌面端右下角模型菜单，同时保留官方 GPT 模型及其原有登录。模型 slug 保持服务端名称，不靠模型目录自动切换 Provider；构建时会明确写入每个模型到对应 Provider 的路由。
 
@@ -44,7 +44,7 @@ python patch.py restore "<path-to-build-directory>"
 
 本机曾在 Windows 桌面版 26.1016.6573、Codex CLI 0.163.0-alpha.11 上验证合并目录包含 10 个官方模型以及 claude-sonnet-4-6、claude-opus-5-5。GPT 与 Sonnet 的简单请求正常返回。Opus 可以发出请求并收到响应，但一次最小指令测试返回了无关搜索内容；这不能作为 Opus 质量或服务端路由正确性的保证。第三方能力和行为取决于服务商。具体记录见 [安装和验证记录](docs/INSTALLATION.md)。
 
-后续增量构建保留 11 个官方目录条目（包括隐藏条目），并按 Opus 5.5、Sonnet 5.5、Sonnet 4.6 排列三个第三方模型。Sonnet 5.5 的最小 Responses 请求返回 `42`，构建的隔离验证通过；该增量构建尚待桌面端退出后安装。示例中的上下文长度只是占位值，实际部署时应核对服务商能力。
+后续增量构建保留 11 个官方目录条目（包括隐藏条目），并按 Opus 5.5、Sonnet 5.5、Sonnet 4.6 排列三个第三方模型。Sonnet 5.5 的最小 Responses 请求返回 `42`，构建的隔离验证通过；随后包含长历史恢复修复的构建已在本机安装。Opus 5.5 曾在超长会话中碰到 8192 输出额度，经过短请求边界测试，该第三方路由接受的 `max_output_tokens` 最大为 128000；归因、设置和验证边界见[第三方模型输出额度](docs/OUTPUT_BUDGET.md)。示例中的上下文长度只是占位值，实际部署时应核对服务商能力。
 
 此仓库没有配置自动更新发布目录。请勿启用后台更新监视器；Codex 桌面端升级后，需用新版本重新构建和验证。安装时桌面端必须正常退出。构建输出与本机连接文件都可能包含敏感运行信息，不能提交到 Git。
 
