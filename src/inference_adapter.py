@@ -108,6 +108,10 @@ def validate_profile(profile):
             raise ValueError('Unsupported model wire protocol')
         if 'supports_reasoning_effort' in route and type(route['supports_reasoning_effort']) is not bool:
             raise ValueError('Reasoning effort support must be an explicit boolean')
+        if ('default_max_output_tokens' in route and
+                (type(route['default_max_output_tokens']) is not int or
+                 not 1 <= route['default_max_output_tokens'] <= 131072)):
+            raise ValueError('Default output token budget must be an integer from 1 to 131072')
         credential = route.get('credential')
         if credential is None or credential.get('kind') == 'none':
             continue
@@ -169,6 +173,8 @@ def prepare_request(body, route):
     body = copy.deepcopy(body)
     for key in ('type', 'generate', 'previous_response_id'):
         body.pop(key, None)
+    if 'max_output_tokens' not in body and route.get('default_max_output_tokens'):
+        body['max_output_tokens'] = route['default_max_output_tokens']
     items = body.get('input', [])
     if isinstance(items, list) and any(isinstance(v, dict) and v.get('type') in ('compaction', 'compaction_trigger') for v in items):
         raise RelayError(501, 'remote_compaction_unsupported', 'Remote compaction is unavailable for this model route')

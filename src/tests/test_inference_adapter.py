@@ -534,6 +534,15 @@ class AdapterTests(unittest.TestCase):
         self.assertFalse(any(k.lower().startswith('x-openai') for k in headers))
         self.assertEqual(actual['tools'][0]['type'], 'function')
 
+    def test_route_fills_only_missing_output_budget(self):
+        route = self.server.profile['routes']['deepseek-fixture']
+        route['default_max_output_tokens'] = 32768
+        relay.validate_profile(self.server.profile)
+        self.request({'model': 'deepseek-fixture', 'input': []})
+        self.assertEqual(self.upstream.seen[-1][3]['max_output_tokens'], 32768)
+        self.request({'model': 'deepseek-fixture', 'input': [], 'max_output_tokens': 1024})
+        self.assertEqual(self.upstream.seen[-1][3]['max_output_tokens'], 1024)
+
     def test_anonymous_local_routes_omit_auth_in_http_and_websocket_translation(self):
         for reference in (None, {'kind': 'none'}):
             route = self.server.profile['routes']['deepseek-fixture']
