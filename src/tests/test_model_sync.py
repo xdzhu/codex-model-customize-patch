@@ -12,6 +12,16 @@ import patch as p
 
 
 class ModelSyncTests(unittest.TestCase):
+    def test_external_identity_replaces_copied_official_claim_only(self):
+        official = {'slug': 'gpt-6.1-sol',
+                    'base_instructions': 'You are Codex, an agent based on GPT-6. Continue.',
+                    'model_messages': {'instructions_template': 'You are Codex, an agent based on GPT-6. Continue.'}}
+        external = m.set_external_identity(copy.deepcopy(official), 'deepseek-flash', 'USTC')
+        self.assertEqual(official['base_instructions'], 'You are Codex, an agent based on GPT-6. Continue.')
+        for value in (external['base_instructions'], external['model_messages']['instructions_template']):
+            self.assertTrue(value.startswith('You are Codex, an agent using the configured deepseek-flash route from USTC.'))
+            self.assertNotIn('agent based on GPT-6', value)
+
     def test_official_context_formats_and_not_long_context_price_threshold(self):
         fixtures=[('grok-4.7','<html><body>Context window 500,000 Pricing: higher rates exceed the 200K context window</body></html>',500000),
                   ('gemini-3.8-flash-high','Input token limit 1,048,576 Output token limit 65,536',1048576),

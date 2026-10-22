@@ -24,6 +24,7 @@ FAMILIES = {
 }
 OFFICIAL_HOSTS = {'docs.x.ai', 'ai.google.dev', 'platform.claude.com', 'api-docs.deepseek.com'}
 EFFORTS = ('none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max')
+NATIVE_IDENTITY = re.compile(r'\AYou are Codex, an agent based on GPT-[^.\n]+(?:\.[0-9]+)?\.')
 # Verified against provider docs and CLIProxyAPI 8.0.32's actual adapters.
 # A model ID ending in -high or -thinking still accepts a per-request effort.
 REASONING_PRESETS = {
@@ -42,6 +43,17 @@ def configure_reasoning(entry, levels=None):
     entry['supported_reasoning_levels']=[{'effort':x,'description':x.title()} for x in values]
     entry['default_reasoning_level']='high' if 'high' in values else values[0]
     entry['supports_reasoning_effort_updates']=len(values)>1
+    return entry
+
+
+def set_external_identity(entry, model, provider):
+    """Remove the official model identity copied with the catalog template."""
+    identity = f'You are Codex, an agent using the configured {model} route from {provider}.'
+    for container, key in ((entry, 'base_instructions'),
+                           (entry.get('model_messages') or {}, 'instructions_template')):
+        value = container.get(key)
+        if isinstance(value, str):
+            container[key] = NATIVE_IDENTITY.sub(identity, value, count=1)
     return entry
 
 
@@ -280,6 +292,7 @@ def make_entry(template, model, provider, spec, priority):
                  tool_mode=None, experimental_supported_tools=[], multi_agent_reasoning_effort='high',
                  supports_search_tool=True, web_search_tool_type='text',
                  support_verbosity=False, default_verbosity=None)
+    set_external_identity(entry, model, provider)
     return configure_reasoning(entry, spec.get('reasoning_levels'))
 
 

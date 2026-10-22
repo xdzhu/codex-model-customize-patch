@@ -29,6 +29,8 @@ connect prints the location of the locally saved connection file. For several mo
 
 A keyless [USTC five-model example](examples/ustc-connections.example.json) shows the selected DeepSeek, GLM, and Qwen IDs. All five passed short Responses and function-call checks with the user's authorized key; see the [validation notes](docs/INSTALLATION.md#中科大平台五模型接入验证). The example stores only the `USTC_API_KEY` environment variable name. Merge multiple services into the `locals` array of one private connections file.
 
+External catalog entries now replace the official GPT identity sentence copied by the template. The official entries remain unchanged. In one model-switching chat, the recorded model IDs were GLM, DeepSeek, and Qwen despite misleading GPT self-identification; two DeepSeek turns received upstream HTTP 400. Fresh short and tool-bearing DeepSeek requests succeeded, so the exact validation failure remains unconfirmed. The updated adapter surfaces the provider's validation detail for diagnosis; see the [incident record](docs/INSTALLATION.md#多模型会话的错误身份与-http-400).
+
 ```powershell
 python patch.py install "<path-to-build-directory>"
 ```

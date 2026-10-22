@@ -52,6 +52,29 @@ def _error(code, message):
     return {'type': 'error', 'error': {'type': 'invalid_request_error', 'code': code, 'message': message}}
 
 
+def _upstream_rejection(response):
+    """Keep a useful validation error without echoing a provider's raw response."""
+    status = response.status
+    code = 'upstream_http_' + str(status)
+    message = 'The model service rejected the request'
+    try:
+        value = json.loads(response.read(16384))
+        detail = value.get('error', value)
+        if isinstance(detail, dict):
+            reason = detail.get('message')
+            if isinstance(reason, str):
+                reason = re.sub(r'(?i)(?:sk-[A-Za-z0-9_-]{8,}|Bearer\s+\S+)', '[redacted]', reason)
+                reason = re.sub(r'[\r\n\t]+', ' ', reason).strip()
+                if reason:
+                    message += ': ' + reason[:500]
+            upstream_code = detail.get('code') or detail.get('type')
+            if isinstance(upstream_code, (str, int)):
+                code += '_' + re.sub(r'[^A-Za-z0-9_-]', '_', str(upstream_code))[:80]
+    except (ValueError, OSError, TypeError):
+        pass
+    return RelayError(status, code, message)
+
+
 def _loopback(host):
     if host == 'localhost':
         return True
@@ -1126,7 +1149,7 @@ class WebSocketSession:
             headers = _route_headers(self.handler.server, route, stream=True)
             response = _open(_route_url(route), _json(wire_body), headers, operation, self.handler.server.profile)
             if response.status >= 400:
-                raise RelayError(response.status, 'upstream_http_' + str(response.status), 'The model service rejected the request')
+                raise _upstream_rejection(response)
             if 'text/event-stream' not in response.getheader('Content-Type', ''):
                 raise RelayError(502, 'invalid_stream', 'The model service did not return an event stream')
             for event in _wire_events(response, protocol):

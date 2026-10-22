@@ -238,7 +238,7 @@ def make_entry(template,model,provider,spec,priority):
         ms.configure_reasoning(entry,spec['reasoning_levels'])
         # Native configuration_update items are not part of compatible Responses.
         entry['supports_reasoning_effort_updates']=False
-    return entry
+    return ms.set_external_identity(entry, model, provider['name'])
 
 
 def connect(args):

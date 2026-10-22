@@ -1,5 +1,6 @@
 import copy
 import gzip
+import io
 import http.client
 import http.server
 import json
@@ -149,6 +150,17 @@ class Upstream(http.server.BaseHTTPRequestHandler):
 
 
 class AdapterTests(unittest.TestCase):
+    def test_upstream_rejection_reports_validation_reason_without_key(self):
+        class Response:
+            status = 400
+            def read(self, limit):
+                return io.BytesIO(encoded({'error': {'code': 'invalid_request',
+                    'message': 'max_output_tokens is too large for ' + 'sk-' + 'example123456789'}})).read(limit)
+        error = relay._upstream_rejection(Response())
+        self.assertEqual(error.status, 400)
+        self.assertIn('max_output_tokens', error.message)
+        self.assertNotIn('sk-example', error.message)
+
     def setUp(self):
         self.upstream = http.server.ThreadingHTTPServer(('127.0.0.1', 0), Upstream)
         self.upstream.daemon_threads = True
