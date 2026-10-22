@@ -12,6 +12,8 @@ Windows 的图形应用有时看不到启动终端临时设置的变量。本派
 
 若用 Windows PowerShell 5.1 执行含中文的安装 `.ps1`，请将脚本保存为带 BOM 的 UTF-8。无 BOM 的文件可能被按本地代码页误读，导致 here-string 内的 Python 检查代码被当作 PowerShell 解析，出现 `from` 关键字不受支持等连锁报错；此类解析错误发生在脚本执行前。
 
+安装后验证大型合并目录时，不要用 Windows PowerShell 5.1 的 `Get-Content -Raw | ConvertFrom-Json` 读取整个 `desktop-models.json`。一次约 1.3 MB 的有效 JSON 在该解析器中抛出 `System.ArgumentException`，错误文本附带整份目录，PowerShell 因而显示大量红字，甚至包含模型的长指令内容；同一文件经 Python `json` 和 PowerShell 7 正常解析。该异常发生在安装事务已经提交之后，不等于目录或适配器安装失败。验证脚本改用 Python 读取 JSON、TOML 并检查服务健康状态；已安装的构建可重复运行验证而不再次安装。用户在菜单选了其他模型后，Codex 可能更新 `config.toml` 的 `model`，因此安装后校验只检查所选模型属于合并目录，不强制它始终等于安装时的默认模型。
+
 ## Windows 上的实际观察
 
 ### 中科大平台五模型接入验证
