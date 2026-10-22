@@ -30,6 +30,8 @@ python patch.py connect --name example --kind openai --url https://api.example.c
 
 connect 会请求 /v1/models，并在本机状态目录保存连接信息。它不保存密钥值。连接文件路径会出现在命令输出中。多个模型需要不同元数据时，按 [示例](examples/connections.example.json) 编辑 model_specs，并用 --connections 指定文件。--context-window 仅在所有指定模型具有相同上下文长度时方便使用；实际值以服务商资料为准。
 
+中科大大模型公共服务平台的五模型无密钥示例见 [USTC 连接示例](examples/ustc-connections.example.json)；该平台的发现、Responses 和工具调用验证记录见[安装和验证记录](docs/INSTALLATION.md#中科大平台五模型接入验证)。示例只保存 `USTC_API_KEY` 环境变量名。不同服务商的连接可合并在同一个私有 `connections.json` 的 `locals` 数组中。
+
 ```powershell
 python patch.py build --connections "<path-to-connections.json>" --output "<path-to-build-directory>" --verify
 ```

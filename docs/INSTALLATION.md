@@ -14,6 +14,14 @@ Windows 的图形应用有时看不到启动终端临时设置的变量。本派
 
 ## Windows 上的实际观察
 
+### 中科大平台五模型接入验证
+
+2026-10-23，用用户自己的 API Key 调用 `https://api.llm.ustc.edu.cn/v1/models`，返回 13 个授权模型 ID。从中选择 `deepseek-flash`、`glm-5.3-flash`、`qwen3.8-flash-next`、`qwen3.8-reasoner`、`deepseek-v4-flash`。逐个对 `/v1/responses` 发送短文本请求，五个都完成；再发送要求调用 `echo(value=42)` 的工具请求，五个都返回了 `function_call` 和正确参数。将 `max_output_tokens` 设为 32768 的短请求也均被接受；这仅验证请求预算参数可用，没有实际生成那么多 token。64 输出 token 对部分推理模型不够，曾出现 `incomplete`，增加到 512 后短请求完成。平台公告称 `deepseek-flash` 已升级至 DeepSeek-V4.1-Flash-1017，但调用 ID 不变；不要将此公告直接套用到 `deepseek-flash-2`。
+
+无密钥配置见[示例](../examples/ustc-connections.example.json)。`model_specs` 的上下文长度采用平台公开部署信息中的 1M 或 262K 级别；网关部署或权限变化后应重新核对。连接使用 `env_key = USTC_API_KEY`，密钥值留在 Windows 用户级环境变量中，不进入仓库、目录或 TOML。实例构建保留 11 个官方目录条目、3 个原有 Claude 条目，再加入上述 5 个；针对当前签名桌面端的隔离验证通过。`/v1/models`、短文本和单次工具调用均不能保证复杂长任务的稳定性，应在实际菜单中继续验证。
+
+Windows 安装器要求 Codex 桌面端正常退出。构建和隔离验证可以在客户端运行时完成；激活新目录与适配器服务时，需要退出客户端，再运行已验证构建的安装命令。这样也能保留原有官方模型的登录与路由。
+
 2026-10-22 的本机试验使用 Codex 桌面版 26.1016.6573 和 CLI 0.163.0-alpha.11。构建结果合并了 10 个官方 GPT 条目和两个第三方条目 claude-sonnet-4-6、claude-opus-5-5。原生适配器的隔离验证通过；通过适配器发出的简单请求中，GPT 和 Sonnet 正常返回。Opus 请求收到服务端响应，但一次要求仅输出 42 的测试返回了无关搜索内容，因此只能说明链路可达，不能确认该服务端的 Opus 路由和行为可靠。
 
 第三方服务的 /v1/models 在当时会拒绝 Python 默认 User-Agent，表现为 HTTP 1010。本派生版给发现和推理请求设置了明确的 User-Agent。此经验只说明这一服务的当时行为，并不保证其他服务兼容。

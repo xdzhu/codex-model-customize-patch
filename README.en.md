@@ -27,6 +27,8 @@ python patch.py build --connections "<path-to-connections.json>" --output "<path
 
 connect prints the location of the locally saved connection file. For several models with distinct specifications, edit its model_specs using [the example](examples/connections.example.json). Close Codex normally before installing:
 
+A keyless [USTC five-model example](examples/ustc-connections.example.json) shows the selected DeepSeek, GLM, and Qwen IDs. All five passed short Responses and function-call checks with the user's authorized key; see the [validation notes](docs/INSTALLATION.md#中科大平台五模型接入验证). The example stores only the `USTC_API_KEY` environment variable name. Merge multiple services into the `locals` array of one private connections file.
+
 ```powershell
 python patch.py install "<path-to-build-directory>"
 ```
