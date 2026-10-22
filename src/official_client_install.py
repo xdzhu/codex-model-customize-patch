@@ -202,7 +202,7 @@ def validate_build(directory, manifest):
 
 
 
-MODEL_KEYS = ('model', 'model_reasoning_effort', 'model_provider', 'model_catalog_json',
+MODEL_KEYS = ('model_provider', 'model_catalog_json',
               'openai_base_url', 'model_context_window', 'model_auto_compact_token_limit')
 
 
@@ -214,6 +214,8 @@ def _record(directory, transaction, phase=None):
 
 def _guard_staged_config(current, staged):
     live, before = p.tomllib.loads(current), p.tomllib.loads(staged)
+    # The user's selected model and effort may change while the build is staged.
+    # Installation rebases on the current config and must preserve those choices.
     for key in MODEL_KEYS:
         p.require(live.get(key) == before.get(key), 'A model setting changed since native staging: ' + key)
     p.require(live.get('features', {}).get('enable_request_compression') ==

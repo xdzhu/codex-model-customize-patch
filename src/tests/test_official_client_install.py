@@ -358,15 +358,28 @@ class TransactionTests(unittest.TestCase):
             self.assertEqual(tomllib.loads(fixture.text())['mcp_servers']['node_repl']['env']['SKY_CUA_NATIVE_PIPE_DIRECTORY'],
                              'during-activation')
 
-    def test_model_change_during_preflight_is_preserved_and_app_is_rolled_back(self):
+    def test_model_change_during_preflight_is_preserved_on_install(self):
         with tempfile.TemporaryDirectory() as temp:
             fixture = Fixture(Path(temp)); clone = shutil.copytree
             def clone_and_change(left, right):
                 clone(left, right); fixture.config.write_text(fixture.text().replace('gpt-fixture','user-model'))
             with fixture.boundaries(), mock.object(p, 'clone_app', side_effect=clone_and_change):
+                self.assertEqual(installer.install(fixture.directory, fixture.manifest)['status'], 'installed')
+            self.assertEqual(tomllib.loads(fixture.text())['model'], 'user-model')
+            self.assertEqual((fixture.target/'app.asar').read_text(), 'official')
+            self.assertTrue(fixture.service['enabled'])
+
+    def test_managed_model_setting_change_during_preflight_is_rejected(self):
+        with tempfile.TemporaryDirectory() as temp:
+            fixture = Fixture(Path(temp)); clone = shutil.copytree
+            def clone_and_change(left, right):
+                clone(left, right)
+                fixture.config.write_text(fixture.text().replace('model_context_window=512000',
+                                                                'model_context_window=256000'))
+            with fixture.boundaries(), mock.object(p, 'clone_app', side_effect=clone_and_change):
                 with self.assertRaisesRegex(p.PatchError, 'model setting changed'):
                     installer.install(fixture.directory, fixture.manifest)
-            self.assertEqual(tomllib.loads(fixture.text())['model'], 'user-model')
+            self.assertEqual(tomllib.loads(fixture.text())['model_context_window'], 256000)
             self.assertEqual((fixture.target/'app.asar').read_text(), 'patched')
             self.assertEqual(fixture.service, fixture.initial_service)
 
