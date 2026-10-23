@@ -28,6 +28,11 @@ class NativeCompressionTests(unittest.TestCase):
         from inference_transport import zstd_body
         node=os.environ.get('CODEX_TEST_COMPRESSION_NODE') or shutil.which('node')
         if not node:self.skipTest('A zstd-capable vendor/test runtime is unavailable')
+        capability=subprocess.run(
+            [node, '-e', "const z=require('node:zlib');process.exit(typeof z.zstdCompressSync==='function' && typeof z.zstdDecompressSync==='function' ? 0 : 1)"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10,
+            **background_options())
+        if capability.returncode:self.skipTest('The selected Node runtime lacks zstd support')
         value=b'Native compression preserves images, tools and bytes.\x00\xff'*100000
         wire=zstd_body(value,decompress=False,node=node)
         self.assertLess(len(wire),len(value))
