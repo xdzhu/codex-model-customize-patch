@@ -19,7 +19,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-      - run: python -m unittest discover -s tests -q
+      - run: python scripts/ci_unittest.py
         working-directory: src
       - run: node tests/route.test.cjs
         working-directory: src
