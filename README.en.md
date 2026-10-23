@@ -31,6 +31,8 @@ A keyless [USTC five-model example](examples/ustc-connections.example.json) show
 
 The USTC example exposes `medium/high` for all five models and `xhigh` for `qwen3.8-flash-next`, with `high` as the default. Short streaming requests confirmed that the gateway echoed these levels. For the other four models, an `xhigh` request returned HTTP 200 but the response reported `high`, so the menu does not advertise an ineffective `xhigh` option. An older catalog with no declared levels displayed “Medium” in the desktop menu while the recorded turns used `none`; verify the actual turn effort and provider response rather than inferring it from that label.
 
+The example also declares image input for `deepseek-flash`, `glm-5.3-flash`, and `qwen3.8-reasoner`. Each correctly identified a synthetic red PNG in a short Responses request. The older catalog marked all five as text-only, causing the desktop app to block image attachments before sending them. `deepseek-v4-flash` returned an error within the stream for the image request, and `qwen3.8-flash-next` produced no answer, so both remain text-only in the example.
+
 External catalog entries now replace the official GPT identity sentence copied by the template. The official entries remain unchanged. In one model-switching chat, the recorded model IDs were GLM, DeepSeek, and Qwen despite misleading GPT self-identification; two DeepSeek turns received upstream HTTP 400. A controlled replay identified the exact defect: a visible GLM reasoning summary was converted into an assistant message without `type: "message"`. The provider rejected that historical input; the complete replay returned HTTP 200 after the field was added. See the [incident record](docs/INSTALLATION.md#多模型会话的错误身份与-http-400).
 
 ```powershell

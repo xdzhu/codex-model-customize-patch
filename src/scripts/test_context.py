@@ -26,7 +26,11 @@ class ResponsesStub(http.server.BaseHTTPRequestHandler):
 
     def do_POST(self):
         body = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
-        self.server.requests.append({'path': self.path, 'model': body.get('model'), 'effort':body.get('reasoning',{}).get('effort')})
+        images = [part.get('image_url') for item in body.get('input', [])
+                  if isinstance(item, dict) for part in item.get('content', [])
+                  if isinstance(part, dict) and part.get('type') == 'input_image']
+        self.server.requests.append({'path': self.path, 'model': body.get('model'),
+                                     'effort': body.get('reasoning', {}).get('effort'), 'images': images})
         index = len(self.server.requests)
         usage_tokens=getattr(self.server,'usage_tokens',180000)
         message = {'id':f'msg_{index}', 'type':'message', 'status':'completed', 'role':'assistant',

@@ -26,6 +26,10 @@ Windows 的图形应用有时看不到启动终端临时设置的变量。本派
 
 2026-10-23 的一个多模型会话中，四轮 `turn_context.effort` 都是 `none`，但桌面菜单显示“中等”。当时五个 USTC 模型条目的 `supported_reasoning_levels` 为空、`default_reasoning_level` 为 `null`，且根配置是 `model_reasoning_effort = "none"`；菜单标签不能代表实际请求了 `medium`。对五个模型分别发送简短的流式 Responses 请求：`medium` 和 `high` 均返回 HTTP 200，并在响应的 `reasoning.effort` 中回报同名档位。`xhigh` 对 `qwen3.8-flash-next` 回报 `xhigh`；另四个模型的 `xhigh` 请求虽然返回 200，却回报 `high`。因此示例仅为后四者声明 `medium/high`，为 Qwen Flash Next 声明 `medium/high/xhigh`，并将五者默认档位设为 `high`。这验证了参数传输和网关回报，不能证明底层推理计算量或模型真实权重。独立的 Codex CLI 加本地模拟接口回归确认选项出现在 `model/list`，每轮切换的强度都传到请求体；官方目录条目逐项保持原样。
 
+### USTC 图片输入的目录限制与逐模型验证
+
+同一批旧目录把五个 USTC 模型的 `input_modalities` 都写成 `["text"]`，这会让桌面端直接提示“不支持图像输入”，请求尚未抵达网关。使用在内存中生成的 32×32 纯红色 PNG，以 `input_image` 数据 URI 向五个 `/v1/responses` 模型分别发一笔短流式请求：`deepseek-flash`、`glm-5.3-flash`、`qwen3.8-reasoner` 均返回 `response.completed`，并正确回答“Red”。`deepseek-v4-flash` 返回 HTTP 200 后在流内给出错误码 500；`qwen3.8-flash-next` 返回 `response.completed` 但没有图像问题的答案。因此仅为前三个模型声明 `["text", "image"]`，其余两个暂留仅文本。平台[入门指南](https://llm.ustc.edu.cn/guide/getting-started/)也提示图片输入需按所选模型与网关实际能力配置；目录开关不会创造模型本身的能力。此测试确认小 PNG 的端到端识别，不保证所有图片格式、分辨率或复杂视觉任务。
+
 Windows 安装器要求 Codex 桌面端正常退出。构建和隔离验证可以在客户端运行时完成；激活新目录与适配器服务时，需要退出客户端，再运行已验证构建的安装命令。这样也能保留原有官方模型的登录与路由。
 
 构建完成后，用户可能在桌面菜单切换默认模型。早期安装器曾把 `model` 或 `model_reasoning_effort` 的变化误判为“自暂存以来模型设置已改变”，导致安装在写入配置前停止。安装器现在只比较补丁真正管理的目录、Provider、端点及上下文设置；激活时从当前 `config.toml` 重新生成配置，保留用户最新选择。本机这次默认模型为 `gpt-6.1-sol`，安装 USTC 目录不应把它改回暂存时的 Claude。真正由补丁管理的设置若改变，安装仍会拒绝并要求复核。若客户端仍在运行，`Quit the target app normally` 表示尚未安装；先退出桌面端再重试，无需恢复自动生成的备份。

@@ -9,11 +9,30 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import patch
 from scripts.test_context import ResponsesStub, Rpc
 from scripts.test_offline import isolated_environment, launch_options, stop_probe, probe_command
+
+IMAGE = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAYAAADED76LAAAAEklEQVR4nGOwKPj1Hx9mGBkKAGsyqEFP7gEOAAAAAElFTkSuQmCC'
+
+
+def image_turn(rpc, tid):
+    result = rpc.request('turn/start', {'threadId': tid,
+        'input': [{'type': 'text', 'text': 'Read the attached image.'},
+                  {'type': 'image', 'url': IMAGE}]})
+    turn_id = result['turn']['id']
+    end = time.monotonic() + 45
+    while time.monotonic() < end:
+        event = rpc.pending.pop(0) if rpc.pending else rpc.receive_event(max(.1, end-time.monotonic()))
+        if event.get('params', {}).get('threadId') != tid:
+            continue
+        if event.get('method') == 'turn/completed' and event['params']['turn']['id'] == turn_id:
+            patch.require(event['params']['turn']['status'] == 'completed', 'Synthetic image turn failed')
+            return
+    raise TimeoutError('Synthetic image turn did not complete')
 
 
 def main(directory):
@@ -54,6 +73,8 @@ def main(directory):
                     for model,entry in selected.items():
                         levels=[r['effort'] for r in entry['supported_reasoning_levels']]
                         actual=next(m for m in exposed if m['model']==model)
+                        patch.require(actual.get('inputModalities') == entry['input_modalities'],
+                                      'Selectable image capability differs: '+model)
                         offered=[r['reasoningEffort'] for r in actual['supportedReasoningEfforts']]
                         patch.require(offered==levels,'Selectable reasoning efforts differ: '+model)
                         thread=rpc.request('thread/start',{'model':model,'modelProvider':routes[model]['provider'],
@@ -66,8 +87,18 @@ def main(directory):
                             sent=server.requests[start:]
                             patch.require(len(sent)==1 and sent[0]['model']==model and sent[0]['effort']==effort,
                                           'Selected effort did not reach provider request: '+model+'/'+str(effort))
-                        report['models'].append({'model':model,'selectable_efforts':offered,'transmitted_efforts':levels+[levels[0]] if levels else [None]})
-                        print('PASS:',model,'selectable and transmitted:',','.join(levels),flush=True)
+                        if 'image' in entry['input_modalities']:
+                            start=len(server.requests)
+                            image_turn(rpc, thread['thread']['id'])
+                            sent=server.requests[start:]
+                            patch.require(len(sent)==1 and sent[0]['images']==[IMAGE],
+                                          'Image input did not reach provider request: '+model)
+                        report['models'].append({'model':model,'selectable_efforts':offered,
+                                                 'transmitted_efforts':levels+[levels[0]] if levels else [None],
+                                                 'input_modalities':actual['inputModalities'],
+                                                 'image_forwarded':'image' in entry['input_modalities']})
+                        print('PASS:',model,'selectable and transmitted:',','.join(levels),
+                              'image' if 'image' in entry['input_modalities'] else 'text-only',flush=True)
                     report['status']='passed'
                 finally:stop_probe(process)
     finally:

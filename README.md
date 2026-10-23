@@ -34,6 +34,8 @@ connect 会请求 /v1/models，并在本机状态目录保存连接信息。它�
 
 USTC 示例现为五个模型声明 `medium/high`，其中 `qwen3.8-flash-next` 还声明 `xhigh`，默认档位是 `high`。短流式请求确认网关回报这几个档位；向其他四个模型请求 `xhigh` 虽返回 HTTP 200，回包却回报 `high`，因此菜单不提供它们的 `xhigh`。目录未声明档位时，桌面菜单可能显示“中等”，而会话记录的实际请求却是 `none`；应检查会话的 `turn_context.effort` 和服务端回包，不能只凭菜单文字判断。
 
+该示例还为实测能读图的 `deepseek-flash`、`glm-5.3-flash` 和 `qwen3.8-reasoner` 声明 `input_modalities = ["text", "image"]`。旧目录把五个模型都标成仅文本，因此桌面端在提交图片前就拒绝。另两条路由暂保留仅文本：`deepseek-v4-flash` 的图片请求收到流内 500，`qwen3.8-flash-next` 虽完成请求却没有返回图片问题的答案。详见[验证记录](docs/INSTALLATION.md#ustc-图片输入的目录限制与逐模型验证)。
+
 第三方条目不能照搬官方 GPT 的身份提示。旧构建复制官方目录模板时，也复制了“基于 GPT-6”的指令；这会让第三方模型错误自称 GPT。现已在生成第三方条目时替换该提示，同时保持官方条目原样。模型的自我介绍不能证明实际路由或底层权重；应以会话中的模型 ID、适配器路由和服务商记录核对。一次多模型切换会话中，两次 DeepSeek 请求收到上游 HTTP 400。受控重放确认：跨模型传递 GLM 可见推理摘要时，适配器生成的助手消息漏写 `type: "message"`，被服务商拒绝解析；补上后完整历史请求返回 200。详情见[排查记录](docs/INSTALLATION.md#多模型会话的错误身份与-http-400)。
 
 ```powershell
