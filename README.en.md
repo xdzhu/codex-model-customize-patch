@@ -49,4 +49,6 @@ The updated example lists Opus 5.5, Sonnet 5.5, and Sonnet 4.6 in menu order. A 
 
 Switching an old GPT chat to Opus may trigger costly history recovery before the final request, which can still be rejected with HTTP 400. A fresh chat with a concise readable handoff passed a small request; see the [troubleshooting record](docs/INSTALLATION.md#重启后旧会话长时间正在思考最终收到服务商-http-400).
 
+For a local 409 saying `The requested compaction was not found in this chat`, an older adapter may have missed a later JSONL file that continues the same chat. The continuation-file fix and read-only verification are described in the [installation record](docs/INSTALLATION.md#超长会话切换模型时的-409). Reload the adapter process to apply the fix.
+
 Source base: upstream extension commit d2c4a8b8b614813846b8563c1c2e98a8bbbc829d. Original [MIT license](LICENSE) and [NOTICE](NOTICE) are retained. The added work covers environment-key authentication, Windows user environment variables, a compatible User-Agent, and an installer edge-case fix. This project is not affiliated with OpenAI, Anthropic, or API providers.

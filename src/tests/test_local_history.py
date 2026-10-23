@@ -103,6 +103,23 @@ class LocalHistoryTests(unittest.TestCase):
         self.rows[0]['payload']['history_base']['end_byte_offset']-=1;self.write()
         with self.assertRaises(LegacyHistoryError):self.read()
 
+    def test_same_thread_continuation_finds_compaction_in_new_rollout(self):
+        prefix=[{'type':'session_meta','payload':{'id':THREAD},'ordinal':0},
+                {'type':'response_item','payload':{'type':'message','role':'user','content':'ORIGINAL_GOAL'},'ordinal':1}]
+        raw=''.join(json.dumps(row)+'\n' for row in prefix).encode()
+        stray={'type':'response_item','payload':{'type':'message','role':'user','content':'UNRELATED_TAIL'},'ordinal':2}
+        self.file.write_bytes(raw+(json.dumps(stray)+'\n').encode())
+        continuation=self.file.with_name(self.file.stem+'_22222222-2222-4222-8222-222222222222.jsonl')
+        continuation.write_text(''.join(json.dumps(row)+'\n' for row in [
+            {'type':'session_meta','payload':{'id':THREAD,'history_base':{
+                'thread_id':THREAD,'end_ordinal_exclusive':2,'end_byte_offset':len(raw)}},'ordinal':2},
+            {'type':'response_item','payload':{'type':'message','role':'assistant','content':'CONTINUED_WORK'},'ordinal':3},
+            {'type':'compacted','payload':{'replacement_history':[OPAQUE]},'ordinal':4}]))
+        result=json.dumps(self.read())
+        self.assertIn('ORIGINAL_GOAL',result)
+        self.assertIn('CONTINUED_WORK',result)
+        self.assertNotIn('UNRELATED_TAIL',result)
+
     def test_missing_paginated_prefix_is_not_treated_as_complete(self):
         for ordinal,row in enumerate(self.rows,20):row['ordinal']=ordinal
         self.write()

@@ -126,7 +126,7 @@ def _matches(candidate, item):
             and candidate.get('id') == item.get('id'))
 
 
-def _find_source(home, thread_id):
+def _find_source(home, thread_id, boundary=None):
     candidates = []
     for name in ('sessions', 'archived_sessions'):
         directory = home / name
@@ -135,17 +135,42 @@ def _find_source(home, thread_id):
         for parent, dirs, files in os.walk(directory, followlinks=False):
             dirs[:] = [d for d in dirs if not (Path(parent)/d).is_symlink()]
             for filename in files:
-                if filename.endswith(thread_id + '.jsonl'):
-                    candidates.append(_source_path(Path(parent)/filename, home))
-    if len(candidates) != 1:
+                if not (filename.endswith(thread_id + '.jsonl') or
+                        thread_id + '_' in filename and filename.endswith('.jsonl')):
+                    continue
+                path = _source_path(Path(parent)/filename, home)
+                with path.open('rb') as stream:
+                    first = stream.readline(MAX_ROLLOUT_LINE + 1)
+                if len(first) > MAX_ROLLOUT_LINE or not first.endswith(b'\n'):
+                    raise unavailable('A native history identity record is incomplete')
+                try:
+                    event = json.loads(first)
+                    meta = event['payload']
+                    if event['type'] != 'session_meta' or meta['id'] != thread_id:
+                        continue
+                    base = meta.get('history_base')
+                    start = base['end_ordinal_exclusive'] if base else 0
+                    if type(start) is not int or start < 0:
+                        raise ValueError()
+                except (ValueError, TypeError, KeyError, AttributeError):
+                    raise unavailable('A native history identity record is invalid') from None
+                if boundary is None or start < boundary['end_ordinal_exclusive']:
+                    candidates.append((start, path))
+    if not candidates:
         raise unavailable('A unique readable file for this native chat was not found')
-    return candidates[0]
+    latest = max(start for start, _ in candidates)
+    selected = [path for start, path in candidates if start == latest]
+    if len(selected) != 1:
+        raise unavailable('A unique readable file for this native chat was not found')
+    return selected[0]
 
 
 def _events(home, thread_id, cancelled, budget, ancestry=(), boundary=None):
-    if thread_id in ancestry or len(ancestry) >= 32:
+    if len(ancestry) >= 32:
         raise unavailable('The native shared-history ancestry is invalid')
-    path = _find_source(home, thread_id)
+    path = _find_source(home, thread_id, boundary)
+    if path in ancestry:
+        raise unavailable('The native shared-history ancestry is invalid')
     fd = os.open(path, os.O_RDONLY | getattr(os, 'O_NOFOLLOW', 0) | getattr(os, 'O_NONBLOCK', 0))
     with os.fdopen(fd, 'rb') as stream:
         if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
@@ -200,7 +225,7 @@ def _events(home, thread_id, cancelled, budget, ancestry=(), boundary=None):
                         raise unavailable('The native shared-history parent is inconsistent')
                     if ordinal is not None and ordinal != parent['end_ordinal_exclusive']:
                         raise unavailable('The native shared-history continuation has a gap')
-                    yield from _events(home, parent_id, cancelled, budget, ancestry + (thread_id,), parent)
+                    yield from _events(home, parent_id, cancelled, budget, ancestry + (path,), parent)
                 elif ordinal is not None and ordinal != 0:
                     raise unavailable('The initial native history prefix is absent')
                 continue
