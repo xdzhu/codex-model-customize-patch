@@ -18,26 +18,31 @@
         "deepseek-flash": {
           "display_name": "DeepSeek V4.1 Flash · USTC",
           "context_window": 1000000,
+          "reasoning_levels": ["medium", "high"],
           "default_max_output_tokens": 32768
         },
         "glm-5.3-flash": {
           "display_name": "GLM 5.3 Flash · USTC",
           "context_window": 1000000,
+          "reasoning_levels": ["medium", "high"],
           "default_max_output_tokens": 32768
         },
         "qwen3.8-flash-next": {
           "display_name": "Qwen 3.8 Flash Next · USTC",
           "context_window": 262144,
+          "reasoning_levels": ["medium", "high", "xhigh"],
           "default_max_output_tokens": 32768
         },
         "qwen3.8-reasoner": {
           "display_name": "Qwen 3.8 Reasoner · USTC",
           "context_window": 262144,
+          "reasoning_levels": ["medium", "high"],
           "default_max_output_tokens": 32768
         },
         "deepseek-v4-flash": {
           "display_name": "DeepSeek V4 Flash · USTC",
           "context_window": 1000000,
+          "reasoning_levels": ["medium", "high"],
           "default_max_output_tokens": 32768
         }
       }

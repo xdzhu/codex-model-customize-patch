@@ -30,7 +30,10 @@ def main(directory):
     report={'status':'failed','external_inference_turns':0,'models':[],
             'catalog_sha256':patch.file_sha(directory/'desktop-models.json')}
     manifest['reasoning_probe']='running';patch.save_json(directory/'manifest.json',manifest)
-    app=directory/'patched.app' if manifest['status']=='prepared' else Path(manifest.get('deployment_target',manifest['target']))
+    if manifest['status'] == 'prepared' and (directory/'patched.app').exists():
+        app = directory/'patched.app'
+    else:
+        app = Path(manifest.get('source_target', manifest.get('deployment_target', manifest['target'])))
     try:
         with tempfile.TemporaryDirectory(prefix='codex-reasoning-probe-') as tmp:
             base=Path(tmp);env=isolated_environment(base);env['REASONING_TEST_KEY']='placeholder'

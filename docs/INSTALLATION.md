@@ -22,6 +22,10 @@ Windows 的图形应用有时看不到启动终端临时设置的变量。本派
 
 无密钥配置见[示例](../examples/ustc-connections.example.json)。`model_specs` 的上下文长度采用平台公开部署信息中的 1M 或 262K 级别；网关部署或权限变化后应重新核对。连接使用 `env_key = USTC_API_KEY`，密钥值留在 Windows 用户级环境变量中，不进入仓库、目录或 TOML。实例构建保留 11 个官方目录条目、3 个原有 Claude 条目，再加入上述 5 个；针对当前签名桌面端的隔离验证通过。`/v1/models`、短文本和单次工具调用均不能保证复杂长任务的稳定性，应在实际菜单中继续验证。
 
+### USTC 推理强度显示与实测
+
+2026-10-23 的一个多模型会话中，四轮 `turn_context.effort` 都是 `none`，但桌面菜单显示“中等”。当时五个 USTC 模型条目的 `supported_reasoning_levels` 为空、`default_reasoning_level` 为 `null`，且根配置是 `model_reasoning_effort = "none"`；菜单标签不能代表实际请求了 `medium`。对五个模型分别发送简短的流式 Responses 请求：`medium` 和 `high` 均返回 HTTP 200，并在响应的 `reasoning.effort` 中回报同名档位。`xhigh` 对 `qwen3.8-flash-next` 回报 `xhigh`；另四个模型的 `xhigh` 请求虽然返回 200，却回报 `high`。因此示例仅为后四者声明 `medium/high`，为 Qwen Flash Next 声明 `medium/high/xhigh`，并将五者默认档位设为 `high`。这验证了参数传输和网关回报，不能证明底层推理计算量或模型真实权重。独立的 Codex CLI 加本地模拟接口回归确认选项出现在 `model/list`，每轮切换的强度都传到请求体；官方目录条目逐项保持原样。
+
 Windows 安装器要求 Codex 桌面端正常退出。构建和隔离验证可以在客户端运行时完成；激活新目录与适配器服务时，需要退出客户端，再运行已验证构建的安装命令。这样也能保留原有官方模型的登录与路由。
 
 构建完成后，用户可能在桌面菜单切换默认模型。早期安装器曾把 `model` 或 `model_reasoning_effort` 的变化误判为“自暂存以来模型设置已改变”，导致安装在写入配置前停止。安装器现在只比较补丁真正管理的目录、Provider、端点及上下文设置；激活时从当前 `config.toml` 重新生成配置，保留用户最新选择。本机这次默认模型为 `gpt-6.1-sol`，安装 USTC 目录不应把它改回暂存时的 Claude。真正由补丁管理的设置若改变，安装仍会拒绝并要求复核。若客户端仍在运行，`Quit the target app normally` 表示尚未安装；先退出桌面端再重试，无需恢复自动生成的备份。
